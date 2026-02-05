@@ -1,4 +1,10 @@
-
 export default function GrowthOverview() {
-  return <div className="p-6">成长规划 - 建设中</div>;
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center">
+      <div className="w-full max-w-xl rounded-2xl border border-border bg-card px-6 py-10 text-center shadow-sm">
+        <div className="text-lg font-semibold">成长规划</div>
+        <div className="mt-2 text-sm text-muted-foreground">模块建设中：目标、计划、任务与复盘。</div>
+      </div>
+    </div>
+  );
 }
