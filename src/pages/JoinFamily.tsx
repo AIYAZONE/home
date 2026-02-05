@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -20,6 +20,9 @@ interface InvitationInfo {
   family_name: string;
 }
 
+const PENDING_INVITE_STORAGE_KEY = 'pendingInvite';
+const PENDING_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 export default function JoinFamily() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
@@ -28,6 +31,12 @@ export default function JoinFamily() {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const pushToast = useToastStore((s) => s.push);
+
+  useEffect(() => {
+    if (!token) return;
+    const payload = { token, expiresAt: Date.now() + PENDING_INVITE_TTL_MS };
+    sessionStorage.setItem(PENDING_INVITE_STORAGE_KEY, JSON.stringify(payload));
+  }, [token]);
 
   const { data: invitation, isLoading: isChecking } = useQuery({
     queryKey: ['invitation-info', token],
@@ -53,6 +62,7 @@ export default function JoinFamily() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
+      sessionStorage.removeItem(PENDING_INVITE_STORAGE_KEY);
       pushToast({ variant: 'success', title: '加入成功', message: '欢迎加入家庭。' });
       setTimeout(() => {
         navigate('/dashboard');

@@ -29,7 +29,7 @@ const navigation: NavItem[] = [
   { name: '健康中心', href: '/health', icon: Heart },
   { name: '关系管理', href: '/relationships', icon: Users },
   { name: 'AI顾问', href: '/advisor', icon: Bot },
-  { name: '设置', href: '/settings', icon: Settings },
+  { name: '家庭设置', href: '/settings', icon: Settings },
 ];
 
 const mobileTabs: NavItem[] = [

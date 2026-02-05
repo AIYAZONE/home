@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
 import { UserProfile } from '@/types';
-import { Users, UserPlus, Copy, Check, Loader2, Shield, User } from 'lucide-react';
+import { Users, UserPlus, Copy, Check, Loader2, Shield, User, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +17,7 @@ import { useToastStore } from '@/stores/toast';
 export default function SettingsOverview() {
   const { data: profile } = useProfile();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [inviteEmail] = useState('');
   const [generatedLink, setGeneratedLink] = useState('');
   const [copied, setCopied] = useState(false);
@@ -26,6 +28,8 @@ export default function SettingsOverview() {
     crypto.getRandomValues(bytes);
     return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   };
+
+  const inviteLinkFromToken = (token: string) => `${window.location.origin}/join?token=${token}`;
 
   // Fetch Family Members
   const { data: members, isLoading: isMembersLoading } = useQuery({
@@ -39,6 +43,29 @@ export default function SettingsOverview() {
       
       if (error) throw error;
       return data as UserProfile[];
+    },
+    enabled: !!profile?.family_id,
+  });
+
+  const { data: invitations, isLoading: isInvitationsLoading } = useQuery({
+    queryKey: ['invitations', profile?.family_id],
+    queryFn: async () => {
+      if (!profile?.family_id) return [];
+      const { data, error } = await supabase
+        .from('invitations')
+        .select('*')
+        .eq('family_id', profile.family_id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data as Array<{
+        id: string;
+        token: string;
+        email: string | null;
+        role: 'admin' | 'parent' | 'child';
+        status: 'pending' | 'accepted' | 'expired';
+        expires_at: string;
+        created_at: string;
+      }>;
     },
     enabled: !!profile?.family_id,
   });
@@ -63,7 +90,7 @@ export default function SettingsOverview() {
   // Create Invitation Mutation
   const createInvitationMutation = useMutation({
     mutationFn: async () => {
-      if (!profile?.family_id) throw new Error('No family ID');
+      if (!profile?.family_id) throw new Error('缺少家庭信息，请先完成家庭设置。');
       
       const token = generateToken();
       
@@ -83,12 +110,26 @@ export default function SettingsOverview() {
       return data;
     },
     onSuccess: (data) => {
-      const link = `${window.location.origin}/join?token=${data.token}`;
-      setGeneratedLink(link);
+      setGeneratedLink(inviteLinkFromToken(data.token));
       pushToast({ variant: 'success', title: '已生成邀请链接', message: '复制后发送给家人即可加入。' });
+      queryClient.invalidateQueries({ queryKey: ['invitations'] });
     },
     onError: (err: any) => {
       pushToast({ variant: 'danger', title: '生成失败', message: toUserMessage(err) });
+    },
+  });
+
+  const revokeInvitationMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('invitations').update({ status: 'expired' }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] });
+      pushToast({ variant: 'success', title: '已撤销', message: '邀请已设置为过期。' });
+    },
+    onError: (err: any) => {
+      pushToast({ variant: 'danger', title: '撤销失败', message: toUserMessage(err) });
     },
   });
 
@@ -103,6 +144,11 @@ export default function SettingsOverview() {
     pushToast({ variant: 'success', message: '已复制到剪贴板', title: '复制成功' });
   };
 
+  const copyInviteToken = async (token: string) => {
+    await navigator.clipboard.writeText(inviteLinkFromToken(token));
+    pushToast({ variant: 'success', title: '复制成功', message: '邀请链接已复制到剪贴板。' });
+  };
+
   if (!profile?.family_id) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -111,8 +157,11 @@ export default function SettingsOverview() {
             <CardTitle>家庭设置</CardTitle>
             <CardDescription>需要先加入一个家庭后才能管理成员与邀请。</CardDescription>
           </CardHeader>
-          <CardContent>
-            <Alert variant="warning">请先在财务中心创建或加入一个家庭。</Alert>
+          <CardContent className="space-y-4">
+            <Alert variant="warning">请先完成家庭设置（创建或加入）。</Alert>
+            <Button className="w-full" onClick={() => navigate('/family/setup')}>
+              前往家庭设置
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -232,6 +281,61 @@ export default function SettingsOverview() {
               <Button variant="ghost" onClick={() => setGeneratedLink('')} className="px-0">
                 生成新的链接
               </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-3">
+          <CardTitle>邀请列表</CardTitle>
+          <CardDescription>查看已生成的邀请链接，支持复制与撤销。</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {isInvitationsLoading ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">加载中…</div>
+          ) : (invitations?.length ?? 0) === 0 ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">暂无邀请记录</div>
+          ) : (
+            <div className="divide-y divide-border rounded-xl border border-border">
+              {invitations?.map((inv) => {
+                const badgeVariant = inv.status === 'accepted' ? 'success' : inv.status === 'expired' ? 'danger' : 'warning';
+                const statusLabel = inv.status === 'accepted' ? '已接受' : inv.status === 'expired' ? '已过期' : '待加入';
+                return (
+                  <div key={inv.id} className="flex items-center justify-between gap-4 px-4 py-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="truncate text-sm font-medium">角色：{inv.role === 'admin' ? '管理员' : inv.role === 'child' ? '孩子' : '成员'}</div>
+                        <Badge variant={badgeVariant as any}>{statusLabel}</Badge>
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        过期时间 {format(new Date(inv.expires_at), 'yyyy年MM月dd日')}
+                        {inv.email ? ` · 绑定邮箱 ${inv.email}` : ''}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button variant="secondary" size="sm" onClick={() => copyInviteToken(inv.token)}>
+                        <Copy className="h-4 w-4" />
+                        复制
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={inv.status !== 'pending' || revokeInvitationMutation.isPending}
+                        onClick={() => {
+                          const ok = window.confirm('确认撤销该邀请吗？撤销后该链接将不可再加入。');
+                          if (!ok) return;
+                          revokeInvitationMutation.mutate(inv.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        撤销
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>

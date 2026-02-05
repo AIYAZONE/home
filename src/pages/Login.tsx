@@ -41,7 +41,7 @@ export default function Login() {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { data: signUpData, error } = await supabase.auth.signUp({
           email: data.email,
           password: data.password,
           options: {
@@ -51,16 +51,13 @@ export default function Login() {
           },
         });
         if (error) throw error;
-        
-        // If returnUrl exists (e.g. from join page), navigate there directly if session established
-        // Note: For email confirmation enabled projects, this might need handling.
-        // For this demo, we assume auto-confirm or direct login.
-        if (returnUrl) {
-           // We need to wait for session to be established? 
-           // Usually signUp returns session if auto-confirm is on.
-           // Let's just alert and let them login or check email.
+
+        if (signUpData?.session && returnUrl) {
+          pushToast({ variant: 'success', title: '注册成功', message: '正在继续加入流程…' });
+          navigate(returnUrl);
+          return;
         }
-        
+
         setIsSignUp(false);
         setNotice('注册成功，请登录后继续。');
         pushToast({ variant: 'success', title: '注册成功', message: '请登录后继续。' });

@@ -22,3 +22,21 @@ export interface UserProfile {
   name: string | null;
   email: string | null;
 }
+
+export interface Category {
+  id: string;
+  family_id: string;
+  name: string;
+  kind: 'income' | 'expense' | 'both';
+  created_at: string;
+}
+
+export interface Budget {
+  id: string;
+  family_id: string;
+  month_start: string;
+  category_name: string;
+  amount: number;
+  created_at: string;
+  updated_at: string;
+}
