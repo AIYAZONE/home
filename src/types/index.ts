@@ -1,12 +1,30 @@
 export interface Transaction {
   id: string;
   family_id: string;
+  owner_user_id: string | null;
+  visibility: 'family' | 'private';
   amount: number;
   category: string;
   description: string | null;
   date: string;
   type: 'income' | 'expense' | 'transfer';
   created_at: string;
+}
+
+export interface RecurringTransaction {
+  id: string;
+  family_id: string;
+  owner_user_id: string | null;
+  visibility: 'family' | 'private';
+  amount: number;
+  category: string;
+  description: string | null;
+  type: 'income' | 'expense';
+  cadence: 'weekly' | 'monthly';
+  next_run_date: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Family {
