@@ -5,6 +5,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import RequireFamilyRoute from '@/components/RequireFamilyRoute';
 import { AuthProvider } from '@/contexts/AuthContext';
 import MainLayout from '@/layouts/MainLayout';
+import FinanceLayout from '@/layouts/FinanceLayout';
 import JoinFamily from '@/pages/JoinFamily';
 import Login from '@/pages/Login';
 import ConfigError from '@/pages/ConfigError';
@@ -12,6 +13,11 @@ import Dashboard from '@/pages/dashboard/Dashboard';
 import AdvisorOverview from '@/pages/advisor/Overview';
 import FamilySetup from '@/pages/family/Setup';
 import FinanceOverview from '@/pages/finance/Overview';
+import FinanceTransactions from '@/pages/finance/Transactions';
+import FinanceBudgets from '@/pages/finance/Budgets';
+import FinanceCategories from '@/pages/finance/Categories';
+import FinanceRecurring from '@/pages/finance/Recurring';
+import FinanceFunds from '@/pages/finance/Funds';
 import GrowthOverview from '@/pages/growth/Overview';
 import HealthOverview from '@/pages/health/Overview';
 import RelationshipsOverview from '@/pages/relationships/Overview';
@@ -40,7 +46,14 @@ export default function App() {
                   <Route element={<RequireFamilyRoute />}>
                     <Route index element={<Navigate to="/dashboard" replace />} />
                     <Route path="dashboard" element={<Dashboard />} />
-                    <Route path="finance" element={<FinanceOverview />} />
+                    <Route path="finance" element={<FinanceLayout />}>
+                      <Route index element={<FinanceOverview />} />
+                      <Route path="transactions" element={<FinanceTransactions />} />
+                      <Route path="budgets" element={<FinanceBudgets />} />
+                      <Route path="categories" element={<FinanceCategories />} />
+                      <Route path="recurring" element={<FinanceRecurring />} />
+                      <Route path="funds" element={<FinanceFunds />} />
+                    </Route>
                     <Route path="growth" element={<GrowthOverview />} />
                     <Route path="health" element={<HealthOverview />} />
                     <Route path="relationships" element={<RelationshipsOverview />} />

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
-import { UserProfile } from '@/types';
-import { Users, UserPlus, Copy, Check, Loader2, Shield, User, Trash2 } from 'lucide-react';
+import { UserProfile, Transaction } from '@/types';
+import { Users, UserPlus, Copy, Check, Loader2, Shield, User, Trash2, Crown, Baby, ChevronDown, Info, Download, FileJson, FileSpreadsheet } from 'lucide-react';
 import { format } from 'date-fns';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
+import { cn } from '@/lib/utils';
 
 export default function SettingsOverview() {
   const { data: profile } = useProfile();
@@ -21,7 +23,17 @@ export default function SettingsOverview() {
   const [inviteEmail] = useState('');
   const [generatedLink, setGeneratedLink] = useState('');
   const [copied, setCopied] = useState(false);
+  const [roleMenuOpen, setRoleMenuOpen] = useState<string | null>(null);
+  const roleMenuAnchorRef = useRef<HTMLElement | null>(null);
+  const [roleMenuPos, setRoleMenuPos] = useState<null | { top: number; left: number }>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const pushToast = useToastStore((s) => s.push);
+
+  const roleConfig: Record<string, { label: string; icon: typeof Shield; color: string; description: string }> = {
+    admin: { label: '管理员', icon: Crown, color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30', description: '拥有所有权限，可管理成员角色' },
+    parent: { label: '家长', icon: Shield, color: 'text-blue-600 bg-blue-50 dark:bg-blue-950/30', description: '可记账、邀请成员、查看家庭数据' },
+    child: { label: '孩子', icon: Baby, color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/30', description: '可查看部分数据、参与任务' },
+  };
 
   const generateToken = () => {
     const bytes = new Uint8Array(24);
@@ -114,7 +126,7 @@ export default function SettingsOverview() {
       pushToast({ variant: 'success', title: '已生成邀请链接', message: '复制后发送给家人即可加入。' });
       queryClient.invalidateQueries({ queryKey: ['invitations'] });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       pushToast({ variant: 'danger', title: '生成失败', message: toUserMessage(err) });
     },
   });
@@ -128,10 +140,140 @@ export default function SettingsOverview() {
       queryClient.invalidateQueries({ queryKey: ['invitations'] });
       pushToast({ variant: 'success', title: '已撤销', message: '邀请已设置为过期。' });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       pushToast({ variant: 'danger', title: '撤销失败', message: toUserMessage(err) });
     },
   });
+
+  const updateRoleMutation = useMutation({
+    mutationFn: async ({ userId, newRole }: { userId: string; newRole: 'admin' | 'parent' | 'child' }) => {
+      const { error } = await supabase.rpc('update_member_role', { p_user_id: userId, p_new_role: newRole });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['family-members'] });
+      setRoleMenuOpen(null);
+      roleMenuAnchorRef.current = null;
+      setRoleMenuPos(null);
+      pushToast({ variant: 'success', title: '角色已更新', message: '成员角色已成功更改。' });
+    },
+    onError: (err: unknown) => {
+      pushToast({ variant: 'danger', title: '更新失败', message: toUserMessage(err) });
+    },
+  });
+
+  const closeRoleMenu = () => {
+    setRoleMenuOpen(null);
+    roleMenuAnchorRef.current = null;
+    setRoleMenuPos(null);
+  };
+
+  const syncRoleMenuPos = () => {
+    const el = roleMenuAnchorRef.current;
+    if (!el || typeof window === 'undefined') return;
+    const rect = el.getBoundingClientRect();
+    const menuWidth = 160;
+    const margin = 8;
+    let left = rect.right - menuWidth;
+    left = Math.max(margin, Math.min(left, window.innerWidth - menuWidth - margin));
+    const top = rect.bottom + 8;
+    setRoleMenuPos({ top, left });
+  };
+
+  const openRoleMenu = (el: HTMLElement, memberId: string) => {
+    roleMenuAnchorRef.current = el;
+    setRoleMenuOpen(memberId);
+    syncRoleMenuPos();
+  };
+
+  useEffect(() => {
+    if (!roleMenuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeRoleMenu();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [roleMenuOpen]);
+
+  useEffect(() => {
+    if (!roleMenuOpen) return;
+    const onReposition = () => syncRoleMenuPos();
+    window.addEventListener('resize', onReposition);
+    window.addEventListener('scroll', onReposition, true);
+    return () => {
+      window.removeEventListener('resize', onReposition);
+      window.removeEventListener('scroll', onReposition, true);
+    };
+  }, [roleMenuOpen]);
+
+  const exportData = async (format: 'json' | 'csv') => {
+    if (!profile?.family_id) return;
+    setIsExporting(true);
+    try {
+      const [transactionsRes, categoriesRes, budgetsRes, recurringRes] = await Promise.all([
+        supabase.from('transactions').select('*').eq('family_id', profile.family_id).order('date', { ascending: false }),
+        supabase.from('categories').select('*').eq('family_id', profile.family_id),
+        supabase.from('budgets').select('*').eq('family_id', profile.family_id),
+        supabase.from('recurring_transactions').select('*').eq('family_id', profile.family_id),
+      ]);
+
+      const data = {
+        exportDate: new Date().toISOString(),
+        family: {
+          id: profile.family_id,
+          name: family?.name,
+        },
+        transactions: transactionsRes.data || [],
+        categories: categoriesRes.data || [],
+        budgets: budgetsRes.data || [],
+        recurringTransactions: recurringRes.data || [],
+      };
+
+      let content: string;
+      let filename: string;
+      let mimeType: string;
+
+      if (format === 'json') {
+        content = JSON.stringify(data, null, 2);
+        filename = `family-data-${new Date().toISOString().slice(0, 10)}.json`;
+        mimeType = 'application/json';
+      } else {
+        const csvRows: string[] = [];
+        csvRows.push('日期,类型,分类,金额,描述,可见范围');
+        (data.transactions as Transaction[]).forEach((t) => {
+          csvRows.push(
+            [
+              new Date(t.date).toISOString().slice(0, 10),
+              t.type === 'income' ? '收入' : t.type === 'expense' ? '支出' : '转账',
+              `"${t.category.replace(/"/g, '""')}"`,
+              t.amount,
+              t.description ? `"${t.description.replace(/"/g, '""')}"` : '',
+              t.visibility === 'private' ? '私密' : '家庭',
+            ].join(',')
+          );
+        });
+        content = csvRows.join('\n');
+        filename = `family-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+        mimeType = 'text/csv;charset=utf-8';
+      }
+
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      pushToast({ variant: 'success', title: '导出成功', message: `已下载 ${filename}` });
+    } catch (err: unknown) {
+      pushToast({ variant: 'danger', title: '导出失败', message: toUserMessage(err) });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const handleGenerateLink = () => {
     createInvitationMutation.mutate();
@@ -212,37 +354,114 @@ export default function SettingsOverview() {
           <CardDescription>角色与权限将影响可见数据范围。</CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
+          <div className="mb-4 rounded-xl border border-border bg-muted/30 p-4">
+            <div className="flex items-start gap-3">
+              <Info className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+              <div className="space-y-2 text-sm">
+                <div className="font-medium text-foreground">角色权限说明</div>
+                <div className="grid gap-1.5">
+                  {Object.entries(roleConfig).map(([key, cfg]) => {
+                    const Icon = cfg.icon;
+                    return (
+                      <div key={key} className="flex items-center gap-2">
+                        <div className={cn('flex h-5 w-5 items-center justify-center rounded', cfg.color)}>
+                          <Icon className="h-3 w-3" />
+                        </div>
+                        <span className="font-medium">{cfg.label}</span>
+                        <span className="text-muted-foreground">— {cfg.description}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {isMembersLoading ? (
             <div className="py-10 text-center text-sm text-muted-foreground">加载中…</div>
           ) : (
             <div className="divide-y divide-border rounded-xl border border-border">
-              {members?.map((member) => (
-                <div key={member.id} className="flex items-center justify-between gap-4 px-4 py-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid h-9 w-9 place-items-center rounded-xl bg-muted/60 text-muted-foreground">
-                      <User className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium">
-                        {member.name || member.email?.split('@')[0] || 'Unknown User'}
-                        {member.id === profile.id ? <span className="ml-2 text-xs text-muted-foreground">(我)</span> : null}
-                      </div>
-                      <div className="truncate text-xs text-muted-foreground">{member.email}</div>
-                    </div>
-                  </div>
+              {members?.map((member) => {
+                const roleCfg = roleConfig[member.role] || roleConfig.parent;
+                const RoleIcon = roleCfg.icon;
+                const canChangeRole = profile?.role === 'admin' && member.id !== profile.id;
+                const isMenuOpen = roleMenuOpen === member.id;
 
-                  <div className="flex items-center gap-2">
-                    {member.role === 'admin' ? (
-                      <Badge className="gap-1" variant="warning">
-                        <Shield className="h-3 w-3" />
-                        管理员
-                      </Badge>
-                    ) : (
-                      <Badge variant="success">成员</Badge>
-                    )}
+                return (
+                  <div key={member.id} className="flex items-center justify-between gap-4 px-4 py-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="grid h-9 w-9 place-items-center rounded-xl bg-muted/60 text-muted-foreground">
+                        <User className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">
+                          {member.name || member.email?.split('@')[0] || 'Unknown User'}
+                          {member.id === profile.id ? <span className="ml-2 text-xs text-muted-foreground">(我)</span> : null}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">{member.email}</div>
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <button
+                        type="button"
+                        disabled={!canChangeRole}
+                        onClick={(e) => {
+                          if (isMenuOpen) closeRoleMenu();
+                          else openRoleMenu(e.currentTarget, member.id);
+                        }}
+                        className={cn(
+                          'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                          roleCfg.color,
+                          canChangeRole && 'hover:opacity-80 cursor-pointer',
+                          !canChangeRole && 'cursor-default'
+                        )}
+                      >
+                        <RoleIcon className="h-3.5 w-3.5" />
+                        {roleCfg.label}
+                        {canChangeRole && <ChevronDown className="h-3 w-3" />}
+                      </button>
+
+                      {isMenuOpen && canChangeRole && (
+                        roleMenuPos &&
+                        createPortal(
+                          <>
+                            <div className="fixed inset-0 z-[9998]" onClick={closeRoleMenu} />
+                            <div
+                              className="fixed z-[9999] w-40 rounded-lg border border-border bg-card p-1 shadow-lg"
+                              style={{ top: roleMenuPos.top, left: roleMenuPos.left }}
+                              role="menu"
+                            >
+                              {Object.entries(roleConfig).map(([roleKey, cfg]) => {
+                                const Icon = cfg.icon;
+                                const isSelected = roleKey === member.role;
+                                return (
+                                  <button
+                                    key={roleKey}
+                                    type="button"
+                                    disabled={isSelected || updateRoleMutation.isPending}
+                                    onClick={() => updateRoleMutation.mutate({ userId: member.id, newRole: roleKey as 'admin' | 'parent' | 'child' })}
+                                    className={cn(
+                                      'flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
+                                      isSelected ? 'bg-muted/50 text-muted-foreground' : 'hover:bg-accent text-foreground'
+                                    )}
+                                    role="menuitem"
+                                  >
+                                    <Icon className="h-3.5 w-3.5" />
+                                    {cfg.label}
+                                    {isSelected && <span className="ml-auto text-xs">当前</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </>,
+                          document.body,
+                        )
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -299,14 +518,15 @@ export default function SettingsOverview() {
           ) : (
             <div className="divide-y divide-border rounded-xl border border-border">
               {invitations?.map((inv) => {
-                const badgeVariant = inv.status === 'accepted' ? 'success' : inv.status === 'expired' ? 'danger' : 'warning';
+                const badgeVariant: 'success' | 'danger' | 'warning' =
+                  inv.status === 'accepted' ? 'success' : inv.status === 'expired' ? 'danger' : 'warning';
                 const statusLabel = inv.status === 'accepted' ? '已接受' : inv.status === 'expired' ? '已过期' : '待加入';
                 return (
                   <div key={inv.id} className="flex items-center justify-between gap-4 px-4 py-4">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <div className="truncate text-sm font-medium">角色：{inv.role === 'admin' ? '管理员' : inv.role === 'child' ? '孩子' : '成员'}</div>
-                        <Badge variant={badgeVariant as any}>{statusLabel}</Badge>
+                        <Badge variant={badgeVariant}>{statusLabel}</Badge>
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         过期时间 {format(new Date(inv.expires_at), 'yyyy年MM月dd日')}
@@ -338,6 +558,44 @@ export default function SettingsOverview() {
               })}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Download className="h-5 w-5 text-primary" />
+            <CardTitle>数据导出</CardTitle>
+          </div>
+          <CardDescription>导出家庭财务数据，支持 JSON 与 CSV 格式。</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="mb-4 rounded-xl border border-border bg-muted/30 p-4">
+            <div className="flex items-start gap-3">
+              <Info className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+              <div className="text-sm text-muted-foreground">
+                导出的数据仅包含当前家庭的财务记录，可用于备份或迁移到其他工具。JSON 格式包含完整数据，CSV 格式仅包含交易记录。
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="secondary"
+              onClick={() => exportData('csv')}
+              disabled={isExporting}
+            >
+              {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+              导出 CSV
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => exportData('json')}
+              disabled={isExporting}
+            >
+              {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileJson className="h-4 w-4" />}
+              导出 JSON
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </Page>
