@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { Bot, Heart, LayoutDashboard, Settings, TrendingUp, Users, Wallet } from 'lucide-react';
+import { Bot, CircleUser, Heart, LayoutDashboard, Receipt, PiggyBank, Repeat, Settings, Tags, Target, TrendingUp, Users, Wallet } from 'lucide-react';
 
 export type NavNode = {
   name: string;
@@ -18,20 +18,36 @@ export const navigation: NavNode[] = [
   { name: '仪表板', href: '/dashboard', icon: LayoutDashboard },
   {
     name: '财务中心',
-    href: '/finance',
     icon: Wallet,
     children: [
-      { name: '记账/流水', href: '/finance/transactions' },
-      { name: '预算', href: '/finance/budgets' },
-      { name: '分类', href: '/finance/categories' },
-      { name: '统计', href: '/finance/reports' },
+      { name: '概览', href: '/finance', icon: LayoutDashboard },
+      { name: '交易记录', href: '/finance/transactions', icon: Receipt },
+      { name: '预算管理', href: '/finance/budgets', icon: PiggyBank },
+      { name: '分类管理', href: '/finance/categories', icon: Tags },
+      { name: '固定支出', href: '/finance/recurring', icon: Repeat },
+      { name: '3层基金', href: '/finance/funds', icon: TrendingUp },
     ],
   },
-  { name: '成长规划', href: '/growth', icon: TrendingUp },
+  {
+    name: '成长规划',
+    icon: TrendingUp,
+    children: [
+      { name: '概览', href: '/growth', icon: LayoutDashboard },
+      { name: '目标列表', href: '/growth/goals', icon: Target },
+    ],
+  },
   { name: '健康中心', href: '/health', icon: Heart },
   { name: '关系管理', href: '/relationships', icon: Users },
   { name: 'AI顾问', href: '/advisor', icon: Bot },
-  { name: '家庭设置', href: '/settings', icon: Settings },
+  { name: '账户中心', href: '/settings/account', icon: CircleUser },
+  {
+    name: '家庭设置',
+    icon: Settings,
+    children: [
+      { name: '概览', href: '/settings', icon: LayoutDashboard },
+      { name: '成员管理', href: '/settings/members', icon: Users },
+    ],
+  },
 ];
 
 export const mobileTabs: NavTab[] = [

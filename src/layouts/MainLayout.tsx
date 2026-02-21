@@ -1,103 +1,44 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Outlet, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  Wallet,
-  TrendingUp,
-  Heart,
-  Users,
-  Bot,
-  Settings,
   Menu,
   X,
-  LogOut,
   Sun,
   Moon,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Receipt,
-  PiggyBank,
-  Tags,
-  Repeat,
-  Target,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 import { Button } from '@/components/ui/button';
-import { useToastStore } from '@/stores/toast';
+import { navigation, mobileTabs, type NavNode } from '@/config/navigation';
 
-type NavItem = {
-  name: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  children?: NavItem[];
-};
-
-const navigation: NavItem[] = [
-  { name: '仪表板', href: '/dashboard', icon: LayoutDashboard },
-  {
-    name: '财务中心',
-    href: '/finance',
-    icon: Wallet,
-    children: [
-      { name: '概览', href: '/finance', icon: LayoutDashboard },
-      { name: '交易记录', href: '/finance/transactions', icon: Receipt },
-      { name: '预算管理', href: '/finance/budgets', icon: PiggyBank },
-      { name: '分类管理', href: '/finance/categories', icon: Tags },
-      { name: '固定支出', href: '/finance/recurring', icon: Repeat },
-      { name: '3层基金', href: '/finance/funds', icon: TrendingUp },
-    ],
-  },
-  {
-    name: '成长规划',
-    href: '/growth',
-    icon: TrendingUp,
-    children: [
-      { name: '概览', href: '/growth', icon: LayoutDashboard },
-      { name: '目标列表', href: '/growth/goals', icon: Target },
-    ],
-  },
-  { name: '健康中心', href: '/health', icon: Heart },
-  { name: '关系管理', href: '/relationships', icon: Users },
-  { name: 'AI顾问', href: '/advisor', icon: Bot },
-  {
-    name: '家庭设置',
-    href: '/settings',
-    icon: Settings,
-    children: [
-      { name: '概览', href: '/settings', icon: LayoutDashboard },
-      { name: '成员管理', href: '/settings/members', icon: Users },
-    ],
-  },
-];
-
-const mobileTabs: NavItem[] = [
-  { name: '概览', href: '/dashboard', icon: LayoutDashboard },
-  { name: '财务', href: '/finance', icon: Wallet },
-  { name: 'AI', href: '/advisor', icon: Bot },
-  { name: '设置', href: '/settings', icon: Settings },
-];
-
-function isParentActive(item: NavItem, pathname: string): boolean {
-  if (pathname.startsWith(item.href)) return true;
-  if (item.children) {
-    return item.children.some((child) => pathname.startsWith(child.href));
-  }
-  return false;
+function getGroupKey(item: NavNode): string {
+  const overviewHref = item.children?.find((child) => child.name === '概览' && child.href)?.href;
+  return overviewHref ?? item.children?.find((child) => child.href)?.href ?? item.name;
 }
 
-function findActiveItem(items: NavItem[], pathname: string): NavItem | null {
+function isGroupActive(item: NavNode, pathname: string): boolean {
+  if (item.href === pathname) return true;
+  if (!item.children) return false;
+  return item.children.some((child) => child.href === pathname);
+}
+
+function findActiveNode(items: NavNode[], pathname: string): NavNode | null {
   for (const item of items) {
     if (item.href === pathname) return item;
     if (item.children) {
-      const found = item.children.find((child) => child.href === pathname);
+      const found = findActiveNode(item.children, pathname);
       if (found) return found;
     }
   }
   return null;
+}
+
+function toDomId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, '');
 }
 
 export default function MainLayout() {
@@ -111,17 +52,15 @@ export default function MainLayout() {
     const saved = window.localStorage.getItem('ui.expandedMenus');
     return saved ? new Set(JSON.parse(saved)) : new Set(['/finance']);
   });
-  const [submenuPopup, setSubmenuPopup] = useState<{ item: NavItem; top: number; left: number } | null>(null);
+  const [submenuPopup, setSubmenuPopup] = useState<{ item: NavNode; top: number; left: number } | null>(null);
   const tooltipAnchorRef = useRef<HTMLElement | null>(null);
   const [floatingTooltip, setFloatingTooltip] = useState<null | { label: string; top: number; left: number }>(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { signOut } = useAuth();
   const { isDark, toggleTheme } = useTheme();
-  const pushToast = useToastStore((s) => s.push);
 
   const current = useMemo(() => {
-    return findActiveItem(navigation, location.pathname) ?? navigation[0];
+    return findActiveNode(navigation, location.pathname) ?? navigation[0];
   }, [location.pathname]);
 
   const closeDrawer = () => setDrawerOpen(false);
@@ -134,13 +73,13 @@ export default function MainLayout() {
     });
   };
 
-  const toggleMenu = (href: string) => {
+  const toggleMenu = (key: string) => {
     setExpandedMenus((prev) => {
       const next = new Set(prev);
-      if (next.has(href)) {
-        next.delete(href);
+      if (next.has(key)) {
+        next.delete(key);
       } else {
-        next.add(href);
+        next.add(key);
       }
       if (typeof window !== 'undefined') {
         window.localStorage.setItem('ui.expandedMenus', JSON.stringify([...next]));
@@ -197,8 +136,8 @@ export default function MainLayout() {
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
       if (submenuPopup) {
-        const target = e.target as HTMLElement;
         if (!target.closest('[data-submenu-popup]') && !target.closest('[data-submenu-trigger]')) {
           setSubmenuPopup(null);
         }
@@ -208,13 +147,7 @@ export default function MainLayout() {
     return () => window.removeEventListener('click', onClickOutside);
   }, [submenuPopup]);
 
-  const handleSignOut = async () => {
-    await signOut();
-    pushToast({ variant: 'default', title: '已退出登录', message: '期待你下次回来。' });
-    navigate('/login');
-  };
-
-  const openSubmenuPopup = (el: HTMLElement, item: NavItem) => {
+  const openSubmenuPopup = (el: HTMLElement, item: NavNode) => {
     const rect = el.getBoundingClientRect();
     setSubmenuPopup({
       item,
@@ -229,7 +162,7 @@ export default function MainLayout() {
         floatingTooltip &&
         createPortal(
           <div
-            className="fixed z-[9999] -translate-y-1/2 whitespace-nowrap rounded-lg border border-border bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-sm before:content-[''] before:absolute before:-left-2 before:top-1/2 before:-translate-y-1/2 before:border-y-8 before:border-y-transparent before:border-r-8 before:border-r-border after:content-[''] after:absolute after:-left-[7px] after:top-1/2 after:-translate-y-1/2 after:border-y-[7px] after:border-y-transparent after:border-r-[7px] after:border-r-popover"
+            className="fixed z-[9999] -translate-y-1/2 whitespace-nowrap rounded-xl border border-border/60 bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-lg before:content-[''] before:absolute before:-left-2 before:top-1/2 before:-translate-y-1/2 before:border-y-8 before:border-y-transparent before:border-r-8 before:border-r-border/60 after:content-[''] after:absolute after:-left-[7px] after:top-1/2 after:-translate-y-1/2 after:border-y-[7px] after:border-y-transparent after:border-r-[7px] after:border-r-popover"
             style={{ top: floatingTooltip.top, left: floatingTooltip.left }}
             role="tooltip"
           >
@@ -242,19 +175,20 @@ export default function MainLayout() {
         createPortal(
           <div
             data-submenu-popup
-            className="fixed z-[9999] min-w-[160px] rounded-xl border border-border bg-popover p-1.5 shadow-lg"
+            className="fixed z-[9999] min-w-[160px] rounded-2xl border border-border/60 bg-popover p-1.5 shadow-lg"
             style={{ top: submenuPopup.top, left: submenuPopup.left }}
           >
             {submenuPopup.item.children?.map((child) => {
+              if (!child.href) return null;
               const isActive = location.pathname === child.href;
-              const Icon = child.icon;
+              const Icon = child.icon!;
               return (
                 <Link
                   key={child.href}
                   to={child.href}
                   onClick={() => setSubmenuPopup(null)}
                   className={cn(
-                    'flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    'flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors',
                     isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   )}
                 >
@@ -275,27 +209,14 @@ export default function MainLayout() {
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 border-r border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/70 transform transition-all duration-300 ease-out lg:translate-x-0 hidden lg:block',
+          'fixed inset-y-0 left-0 z-50 border-r border-border/60 bg-card transform transition-all duration-300 ease-out lg:translate-x-0 hidden lg:block',
           sidebarCollapsed ? 'w-20' : 'w-72',
           drawerOpen ? 'translate-x-0 block' : '',
         )}
         aria-label="Sidebar"
       >
         <div className="relative flex h-full flex-col">
-          <button
-            type="button"
-            className="absolute -right-4 top-1/2 z-10 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-border bg-background shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-            onClick={toggleSidebarCollapsed}
-            aria-label={sidebarCollapsed ? '展开菜单' : '折叠菜单'}
-          >
-            {sidebarCollapsed ? (
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-            )}
-          </button>
-
-          <div className={cn('flex h-16 items-center px-4', sidebarCollapsed ? 'justify-center' : 'justify-between')}>
+          <div className={cn('flex h-16 items-center border-b border-border/40 px-3', sidebarCollapsed ? 'justify-center' : 'justify-between')}>
             <Link
               to="/dashboard"
               className={cn('flex items-center overflow-hidden', sidebarCollapsed ? 'justify-center' : 'gap-2')}
@@ -315,25 +236,30 @@ export default function MainLayout() {
             </Link>
           </div>
 
-          <nav className="flex-1 overflow-y-auto px-3 pb-6 pt-2">
+          <nav className="flex-1 overflow-y-auto px-3 py-3">
             <div className={cn('space-y-1', sidebarCollapsed && 'pt-1')}>
               {navigation.map((item) => {
-                const isActive = isParentActive(item, location.pathname);
-                const isExpanded = expandedMenus.has(item.href);
-                const Icon = item.icon;
-                const hasChildren = item.children && item.children.length > 0;
+                const hasChildren = Boolean(item.children && item.children.length > 0);
+                const groupKey = hasChildren ? getGroupKey(item) : (item.href ?? item.name);
+                const isExpanded = hasChildren ? expandedMenus.has(groupKey) : false;
+                const isActive = hasChildren
+                  ? isGroupActive(item, location.pathname)
+                  : item.href
+                    ? location.pathname === item.href || location.pathname.startsWith(`${item.href}/`)
+                    : false;
+                const Icon = item.icon!;
 
                 if (sidebarCollapsed) {
                   return (
-                    <div key={item.href} className="relative">
+                    <div key={groupKey} className="relative">
                       <button
                         type="button"
                         data-submenu-trigger={hasChildren ? 'true' : undefined}
-                        onClick={() => {
+                        onClick={(e) => {
                           if (hasChildren) {
-                            const el = document.activeElement as HTMLElement;
-                            openSubmenuPopup(el, item);
-                          } else {
+                            closeFloatingTooltip();
+                            openSubmenuPopup(e.currentTarget, item);
+                          } else if (item.href) {
                             navigate(item.href);
                           }
                         }}
@@ -342,17 +268,12 @@ export default function MainLayout() {
                           isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                         )}
                         onMouseEnter={(e) => {
-                          if (!hasChildren) {
-                            openFloatingTooltip(e.currentTarget, item.name);
-                          } else {
-                            openSubmenuPopup(e.currentTarget, item);
-                          }
+                          openFloatingTooltip(e.currentTarget, item.name);
                         }}
                         onMouseLeave={() => {
-                          if (!hasChildren) {
-                            closeFloatingTooltip();
-                          }
+                          closeFloatingTooltip();
                         }}
+                        aria-haspopup={hasChildren ? 'menu' : undefined}
                       >
                         <Icon className={cn('h-5 w-5 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
                       </button>
@@ -360,91 +281,116 @@ export default function MainLayout() {
                   );
                 }
 
-                return (
-                  <div key={item.href}>
-                    <div className="flex items-center">
-                      <Link
-                        to={item.href}
+                if (hasChildren) {
+                  const menuId = `sidebar-group-${toDomId(groupKey)}`;
+                  return (
+                    <div key={groupKey}>
+                      <button
+                        type="button"
+                        onClick={() => toggleMenu(groupKey)}
                         className={cn(
-                          'group relative z-0 flex flex-1 items-center rounded-2xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
-                          'h-11 w-full gap-3 px-3',
+                          'group relative z-0 flex w-full items-center justify-between rounded-2xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                          'h-11 px-3',
                           isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                         )}
-                        aria-current={isActive ? 'page' : undefined}
+                        aria-expanded={isExpanded}
+                        aria-controls={menuId}
                       >
-                        <Icon className={cn('h-5 w-5 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                        <span className="truncate transition-all duration-200 opacity-100">
-                          {item.name}
+                        <span className="flex min-w-0 items-center gap-3">
+                          <Icon className={cn('h-5 w-5 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
+                          <span className="truncate">{item.name}</span>
                         </span>
-                      </Link>
-                      {hasChildren && (
-                        <button
-                          type="button"
-                          onClick={() => toggleMenu(item.href)}
-                          className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                          aria-label={isExpanded ? '折叠菜单' : '展开菜单'}
-                        >
-                          <ChevronDown className={cn('h-4 w-4 transition-transform duration-200', isExpanded && 'rotate-180')} />
-                        </button>
+                        <ChevronDown
+                          className={cn(
+                            'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:text-foreground',
+                            isExpanded && 'rotate-180',
+                            isActive && 'text-primary',
+                          )}
+                          aria-hidden="true"
+                        />
+                      </button>
+
+                      {isExpanded && (
+                        <div id={menuId} className="mt-1 ml-4 space-y-0.5 border-l border-border/40 pl-4">
+                          {item.children!.map((child) => {
+                            if (!child.href) return null;
+                            const childIsActive = location.pathname === child.href;
+                            const ChildIcon = child.icon!;
+                            return (
+                              <Link
+                                key={child.href}
+                                to={child.href}
+                                className={cn(
+                                  'group flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-medium transition-colors',
+                                  childIsActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                                )}
+                              >
+                                <ChildIcon className={cn('h-4 w-4', childIsActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
+                                <span className="truncate">{child.name}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
+                  );
+                }
 
-                    {hasChildren && isExpanded && (
-                      <div className="mt-1 ml-4 space-y-0.5 border-l border-border pl-4">
-                        {item.children!.map((child) => {
-                          const childIsActive = location.pathname === child.href;
-                          const ChildIcon = child.icon;
-                          return (
-                            <Link
-                              key={child.href}
-                              to={child.href}
-                              className={cn(
-                                'group flex items-center gap-2 rounded-xl px-3 h-9 text-sm font-medium transition-colors',
-                                childIsActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                              )}
-                            >
-                              <ChildIcon className={cn('h-4 w-4', childIsActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                              <span className="truncate">{child.name}</span>
-                            </Link>
-                          );
-                        })}
-                      </div>
+                return item.href ? (
+                  <Link
+                    key={groupKey}
+                    to={item.href}
+                    className={cn(
+                      'group relative z-0 flex w-full items-center rounded-2xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                      'h-11 gap-3 px-3',
+                      isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                     )}
-                  </div>
-                );
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <Icon className={cn('h-5 w-5 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
+                    <span className="truncate">{item.name}</span>
+                  </Link>
+                ) : null;
               })}
             </div>
           </nav>
 
-          <div className="border-t border-border p-3">
-            <button
-              type="button"
-              className={cn(
-                'group relative z-0 flex w-full items-center rounded-2xl text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
-                sidebarCollapsed ? 'mx-auto h-12 w-12 justify-center' : 'h-11 justify-start px-3',
-              )}
-              onClick={handleSignOut}
-              onMouseEnter={(e) => {
-                if (!sidebarCollapsed) return;
-                openFloatingTooltip(e.currentTarget, '退出登录');
-              }}
-              onMouseLeave={() => {
-                if (!sidebarCollapsed) return;
-                closeFloatingTooltip();
-              }}
-            >
-              <LogOut className="h-5 w-5 shrink-0" />
-              <span className={cn('transition-all duration-200', sidebarCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 ml-3')}>
-                退出登录
-              </span>
-            </button>
+          <div className={cn('border-t border-border/40', sidebarCollapsed ? 'p-2' : 'p-3')}>
+            {sidebarCollapsed ? (
+              <button
+                type="button"
+                className="group mx-auto flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                onClick={toggleSidebarCollapsed}
+                aria-label="展开侧栏"
+                onMouseEnter={(e) => {
+                  openFloatingTooltip(e.currentTarget, '展开侧栏');
+                }}
+                onMouseLeave={() => {
+                  closeFloatingTooltip();
+                }}
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="group flex h-11 w-full items-center justify-between rounded-2xl px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                onClick={toggleSidebarCollapsed}
+                aria-label="收起侧栏"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <ChevronLeft className="h-5 w-5 shrink-0 text-muted-foreground group-hover:text-foreground" />
+                  <span className="truncate">收起侧栏</span>
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </aside>
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-72 border-r border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/70 transform transition-transform duration-200 ease-out lg:hidden',
+          'fixed inset-y-0 left-0 z-50 w-72 border-r border-border/60 bg-card transform transition-transform duration-200 ease-out lg:hidden',
           drawerOpen ? 'translate-x-0' : '-translate-x-full',
         )}
         aria-label="Mobile Sidebar"
@@ -468,70 +414,89 @@ export default function MainLayout() {
           <nav className="flex-1 overflow-y-auto px-3 pb-6 pt-2">
             <div className="space-y-1">
               {navigation.map((item) => {
-                const isActive = isParentActive(item, location.pathname);
-                const isExpanded = expandedMenus.has(item.href);
-                const Icon = item.icon;
-                const hasChildren = item.children && item.children.length > 0;
+                const hasChildren = Boolean(item.children && item.children.length > 0);
+                const groupKey = hasChildren ? getGroupKey(item) : (item.href ?? item.name);
+                const isExpanded = hasChildren ? expandedMenus.has(groupKey) : false;
+                const isActive = hasChildren
+                  ? isGroupActive(item, location.pathname)
+                  : item.href
+                    ? location.pathname === item.href || location.pathname.startsWith(`${item.href}/`)
+                    : false;
+                const Icon = item.icon!;
 
                 return (
-                  <div key={item.href}>
-                    <div className="flex items-center">
+                  <div key={groupKey}>
+                    {hasChildren ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => toggleMenu(groupKey)}
+                          className={cn(
+                            'group flex w-full items-center justify-between rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                            isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                          )}
+                          aria-expanded={isExpanded}
+                          aria-controls={`mobile-group-${toDomId(groupKey)}`}
+                        >
+                          <span className="flex min-w-0 items-center gap-3">
+                            <Icon className={cn('h-5 w-5', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
+                            <span className="truncate">{item.name}</span>
+                          </span>
+                          <ChevronDown
+                            className={cn(
+                              'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:text-foreground',
+                              isExpanded && 'rotate-180',
+                              isActive && 'text-primary',
+                            )}
+                            aria-hidden="true"
+                          />
+                        </button>
+
+                        {isExpanded && (
+                          <div
+                            id={`mobile-group-${toDomId(groupKey)}`}
+                            className="mt-1 ml-4 space-y-0.5 border-l border-border/60 pl-4"
+                          >
+                            {item.children!.map((child) => {
+                              if (!child.href) return null;
+                              const childIsActive = location.pathname === child.href;
+                              const ChildIcon = child.icon!;
+                              return (
+                                <Link
+                                  key={child.href}
+                                  to={child.href}
+                                  onClick={closeDrawer}
+                                  className={cn(
+                                    'group flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors',
+                                    childIsActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                                  )}
+                                >
+                                  <ChildIcon className={cn('h-4 w-4', childIsActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
+                                  <span className="truncate">{child.name}</span>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    ) : item.href ? (
                       <Link
                         to={item.href}
                         onClick={closeDrawer}
                         className={cn(
-                          'group flex flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                          'group flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors',
                           isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                         )}
                       >
                         <Icon className={cn('h-5 w-5', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
                         <span className="truncate">{item.name}</span>
                       </Link>
-                      {hasChildren && (
-                        <button
-                          type="button"
-                          onClick={() => toggleMenu(item.href)}
-                          className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                        >
-                          <ChevronDown className={cn('h-4 w-4 transition-transform duration-200', isExpanded && 'rotate-180')} />
-                        </button>
-                      )}
-                    </div>
-
-                    {hasChildren && isExpanded && (
-                      <div className="mt-1 ml-4 space-y-0.5 border-l border-border pl-4">
-                        {item.children!.map((child) => {
-                          const childIsActive = location.pathname === child.href;
-                          const ChildIcon = child.icon;
-                          return (
-                            <Link
-                              key={child.href}
-                              to={child.href}
-                              onClick={closeDrawer}
-                              className={cn(
-                                'group flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                                childIsActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                              )}
-                            >
-                              <ChildIcon className={cn('h-4 w-4', childIsActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                              <span className="truncate">{child.name}</span>
-                            </Link>
-                          );
-                        })}
-                      </div>
-                    )}
+                    ) : null}
                   </div>
                 );
               })}
             </div>
           </nav>
-
-          <div className="border-t border-border p-3">
-            <Button variant="ghost" className="w-full justify-start" onClick={handleSignOut}>
-              <LogOut className="h-5 w-5" />
-              退出登录
-            </Button>
-          </div>
         </div>
       </aside>
 

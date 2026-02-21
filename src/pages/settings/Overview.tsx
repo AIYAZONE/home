@@ -410,8 +410,11 @@ export default function SettingsOverview() {
                           if (isMenuOpen) closeRoleMenu();
                           else openRoleMenu(e.currentTarget, member.id);
                         }}
+                        aria-haspopup={canChangeRole ? 'menu' : undefined}
+                        aria-expanded={isMenuOpen ? true : undefined}
+                        aria-controls={isMenuOpen ? `role-menu-${member.id}` : undefined}
                         className={cn(
-                          'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                          'inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium transition-colors',
                           roleCfg.color,
                           canChangeRole && 'hover:opacity-80 cursor-pointer',
                           !canChangeRole && 'cursor-default'
@@ -428,7 +431,8 @@ export default function SettingsOverview() {
                           <>
                             <div className="fixed inset-0 z-[9998]" onClick={closeRoleMenu} />
                             <div
-                              className="fixed z-[9999] w-40 rounded-lg border border-border bg-card p-1 shadow-lg"
+                              id={`role-menu-${member.id}`}
+                              className="fixed z-[9999] w-40 rounded-2xl border border-border/60 bg-card p-1 shadow-lg"
                               style={{ top: roleMenuPos.top, left: roleMenuPos.left }}
                               role="menu"
                             >
