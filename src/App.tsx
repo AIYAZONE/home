@@ -19,9 +19,11 @@ import FinanceCategories from '@/pages/finance/Categories';
 import FinanceRecurring from '@/pages/finance/Recurring';
 import FinanceFunds from '@/pages/finance/Funds';
 import GrowthOverview from '@/pages/growth/Overview';
+import GrowthGoals from '@/pages/growth/Goals';
 import HealthOverview from '@/pages/health/Overview';
 import RelationshipsOverview from '@/pages/relationships/Overview';
 import SettingsOverview from '@/pages/settings/Overview';
+import SettingsMembers from '@/pages/settings/Members';
 import { supabaseConfig } from '@/lib/supabase';
 import { ToastHost } from '@/components/ui/toast';
 
@@ -55,10 +57,12 @@ export default function App() {
                       <Route path="funds" element={<FinanceFunds />} />
                     </Route>
                     <Route path="growth" element={<GrowthOverview />} />
+                    <Route path="growth/goals" element={<GrowthGoals />} />
                     <Route path="health" element={<HealthOverview />} />
                     <Route path="relationships" element={<RelationshipsOverview />} />
                     <Route path="advisor" element={<AdvisorOverview />} />
                     <Route path="settings" element={<SettingsOverview />} />
+                    <Route path="settings/members" element={<SettingsMembers />} />
                   </Route>
                 </Route>
               </Route>
