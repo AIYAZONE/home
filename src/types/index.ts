@@ -96,6 +96,22 @@ export interface AllocationRule {
   updated_at: string;
 }
 
+export interface BalanceSheetItem {
+  id: string;
+  family_id: string;
+  owner_user_id: string | null;
+  visibility: 'family' | 'private';
+  kind: 'asset' | 'liability';
+  category: string;
+  name: string;
+  amount: number;
+  as_of_date: string;
+  note: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface GrowthGoal {
   id: string;
   family_id: string;

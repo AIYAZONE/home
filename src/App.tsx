@@ -13,6 +13,7 @@ import Dashboard from '@/pages/dashboard/Dashboard';
 import AdvisorOverview from '@/pages/advisor/Overview';
 import FamilySetup from '@/pages/family/Setup';
 import FinanceOverview from '@/pages/finance/Overview';
+import FinanceAssets from '@/pages/finance/Assets';
 import FinanceTransactions from '@/pages/finance/Transactions';
 import FinanceBudgets from '@/pages/finance/Budgets';
 import FinanceCategories from '@/pages/finance/Categories';
@@ -51,6 +52,7 @@ export default function App() {
                     <Route path="dashboard" element={<Dashboard />} />
                     <Route path="finance" element={<FinanceLayout />}>
                       <Route index element={<FinanceOverview />} />
+                      <Route path="assets" element={<FinanceAssets />} />
                       <Route path="transactions" element={<FinanceTransactions />} />
                       <Route path="budgets" element={<FinanceBudgets />} />
                       <Route path="categories" element={<FinanceCategories />} />

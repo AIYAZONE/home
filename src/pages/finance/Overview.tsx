@@ -1,10 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
-import { Category, RecurringTransaction, Transaction } from '@/types';
+import { AllocationRule, Category, FundAccount, RecurringTransaction, Transaction } from '@/types';
 import { Link, useNavigate } from 'react-router-dom';
-import { Calendar, DollarSign, Loader2, Plus, TrendingDown, TrendingUp, X, Receipt, PiggyBank, Tags, Repeat, TrendingUp as FundIcon } from 'lucide-react';
+import { BarChart3, Calendar, DollarSign, Loader2, Plus, TrendingDown, TrendingUp, X, Receipt, PiggyBank, Tags, Repeat, TrendingUp as FundIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
 
 const quickLinks = [
+  { name: '资产统计', href: '/finance/assets', icon: BarChart3, description: '汇总资产/负债与基金余额' },
   { name: '交易记录', href: '/finance/transactions', icon: Receipt, description: '查看和管理所有交易' },
   { name: '预算管理', href: '/finance/budgets', icon: PiggyBank, description: '设置和跟踪预算' },
   { name: '分类管理', href: '/finance/categories', icon: Tags, description: '管理收支分类' },
@@ -38,6 +40,8 @@ export default function FinanceOverview() {
   const [recurringActive, setRecurringActive] = useState(false);
   const [recurringCadence, setRecurringCadence] = useState<'weekly' | 'monthly'>('monthly');
   const pendingRecurringRef = useRef<null | Omit<RecurringTransaction, 'id' | 'created_at' | 'updated_at'>>(null);
+  const [allocationPrompt, setAllocationPrompt] = useState<null | { transaction: Transaction; items: Array<{ fund: FundAccount; percentage: number; amount: number; ruleId: string }>; leftover: number }>(null);
+  const [isApplyingAllocation, setIsApplyingAllocation] = useState(false);
 
   const monthStart = useMemo(() => {
     const now = new Date();
@@ -101,9 +105,9 @@ export default function FinanceOverview() {
         .select()
         .single();
       if (error) throw error;
-      return data;
+      return data as Transaction;
     },
-    onSuccess: () => {
+    onSuccess: async (created) => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       if (pendingRecurringRef.current) {
         createRecurringMutation.mutate(pendingRecurringRef.current);
@@ -116,6 +120,7 @@ export default function FinanceOverview() {
       setDescription('');
       setDate(new Date().toISOString().slice(0, 10));
       pushToast({ variant: 'success', title: '已保存', message: '交易已添加。' });
+      await maybeOpenAllocationPrompt(created);
     },
     onError: (err: any) => {
       pendingRecurringRef.current = null;
@@ -209,6 +214,135 @@ export default function FinanceOverview() {
   const closeEditor = () => {
     setIsAdding(false);
     setRecurringActive(false);
+  };
+
+  const closeAllocationPrompt = () => {
+    if (isApplyingAllocation) return;
+    setAllocationPrompt(null);
+  };
+
+  useEffect(() => {
+    if (!allocationPrompt) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeAllocationPrompt();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [allocationPrompt, isApplyingAllocation]);
+
+  const maybeOpenAllocationPrompt = async (created: Transaction) => {
+    if (created.type !== 'income') return;
+    const familyId = profile.family_id;
+
+    const { data: existing } = await supabase
+      .from('fund_allocations')
+      .select('id')
+      .eq('family_id', familyId)
+      .eq('transaction_id', created.id)
+      .limit(1);
+    if ((existing ?? []).length > 0) return;
+
+    const { data: rules, error: rulesError } = await supabase
+      .from('allocation_rules')
+      .select('*')
+      .eq('family_id', familyId)
+      .eq('is_active', true)
+      .order('priority', { ascending: true })
+      .order('created_at', { ascending: true });
+    if (rulesError) return;
+
+    const activeRules = (rules as AllocationRule[]).filter((r) => Number(r.percentage) > 0);
+    if (activeRules.length === 0) return;
+
+    const { data: funds, error: fundsError } = await supabase
+      .from('fund_accounts')
+      .select('*')
+      .eq('family_id', familyId)
+      .eq('is_active', true)
+      .order('priority', { ascending: true });
+    if (fundsError) return;
+
+    const fundById = new Map<string, FundAccount>((funds as FundAccount[]).map((f) => [f.id, f]));
+
+    const roundMoney = (n: number) => Math.round(n * 100) / 100;
+    const items = activeRules
+      .map((r) => {
+        const fund = fundById.get(r.fund_account_id);
+        if (!fund) return null;
+        const pct = Number(r.percentage);
+        const amount = roundMoney((Number(created.amount) * pct) / 100);
+        if (!Number.isFinite(amount) || amount <= 0) return null;
+        return { fund, percentage: pct, amount, ruleId: r.id };
+      })
+      .filter((x): x is { fund: FundAccount; percentage: number; amount: number; ruleId: string } => Boolean(x));
+
+    const totalAllocated = items.reduce((acc, x) => acc + x.amount, 0);
+    if (totalAllocated <= 0) return;
+
+    setAllocationPrompt({
+      transaction: created,
+      items,
+      leftover: roundMoney(Number(created.amount) - totalAllocated),
+    });
+  };
+
+  const applyAllocation = async () => {
+    if (!allocationPrompt) return;
+    const familyId = profile.family_id;
+
+    setIsApplyingAllocation(true);
+    try {
+      const { data: existing } = await supabase
+        .from('fund_allocations')
+        .select('id')
+        .eq('family_id', familyId)
+        .eq('transaction_id', allocationPrompt.transaction.id)
+        .limit(1);
+      if ((existing ?? []).length > 0) {
+        pushToast({ variant: 'warning', title: '已分配过', message: '这笔收入已经执行过存钱计划。' });
+        setAllocationPrompt(null);
+        return;
+      }
+
+      for (const item of allocationPrompt.items) {
+        const { error: insertError } = await supabase.from('fund_allocations').insert({
+          family_id: familyId,
+          fund_account_id: item.fund.id,
+          transaction_id: allocationPrompt.transaction.id,
+          amount: item.amount,
+          kind: 'deposit',
+          note: '存钱计划',
+        });
+        if (insertError) throw insertError;
+
+        const { error: rpcError } = await supabase.rpc('update_fund_account_amount', {
+          p_fund_id: item.fund.id,
+          p_delta: item.amount,
+        });
+        if (!rpcError) continue;
+
+        const current = Number(item.fund.current_amount) || 0;
+        const { error: updateError } = await supabase
+          .from('fund_accounts')
+          .update({ current_amount: current + item.amount, updated_at: new Date().toISOString() })
+          .eq('id', item.fund.id);
+        if (updateError) throw updateError;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['fund_accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['fund_allocations'] });
+      pushToast({ variant: 'success', title: '已分配', message: '存钱计划已执行，基金进度已更新。' });
+      setAllocationPrompt(null);
+    } catch (err: unknown) {
+      pushToast({ variant: 'danger', title: '分配失败', message: toUserMessage(err) });
+    } finally {
+      setIsApplyingAllocation(false);
+    }
   };
 
   return (
@@ -499,6 +633,61 @@ export default function FinanceOverview() {
           </div>
         </div>
       )}
+
+      {allocationPrompt &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+            onClick={closeAllocationPrompt}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+              <Card className="border border-border/60 bg-popover shadow-lg">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <CardTitle>存钱计划分配</CardTitle>
+                      <CardDescription className="truncate">
+                        本次收入 ¥{Number(allocationPrompt.transaction.amount).toFixed(2)}，将按规则分配到基金。
+                      </CardDescription>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={closeAllocationPrompt} aria-label="关闭" disabled={isApplyingAllocation}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-2">
+                    {allocationPrompt.items.map((item) => (
+                      <div key={item.fund.id} className="flex items-center justify-between rounded-xl border border-border/60 bg-background/40 px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{item.fund.name}</div>
+                          <div className="text-xs text-muted-foreground">{item.percentage.toFixed(2)}%</div>
+                        </div>
+                        <div className="font-semibold">¥{item.amount.toFixed(2)}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {allocationPrompt.leftover > 0 ? (
+                    <div className="text-xs text-muted-foreground">剩余 ¥{allocationPrompt.leftover.toFixed(2)} 不会自动分配到基金。</div>
+                  ) : null}
+
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="secondary" onClick={closeAllocationPrompt} disabled={isApplyingAllocation}>
+                      跳过
+                    </Button>
+                    <Button type="button" onClick={applyAllocation} disabled={isApplyingAllocation}>
+                      {isApplyingAllocation ? '分配中…' : '确认分配'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>,
+          document.body,
+        )}
     </Page>
   );
 }
