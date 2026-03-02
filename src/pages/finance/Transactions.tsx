@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { useState, useMemo } from 'react';
 import { useProfile } from '@/hooks/useProfile';
-import { Category, Transaction } from '@/types';
+import { useTransactions } from '@/hooks/useTransactions';
+import { useCategories } from '@/hooks/useCategories';
+import { Transaction } from '@/types';
 import { Loader2, Pencil, Plus, Search, Trash2, TrendingDown, TrendingUp, X, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -12,14 +12,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
-import { toUserMessage } from '@/lib/error';
-import { useToastStore } from '@/stores/toast';
 
 export default function FinanceTransactions() {
   const { data: profile, isLoading: isProfileLoading } = useProfile();
-  const queryClient = useQueryClient();
-  const pushToast = useToastStore((s) => s.push);
-  const [isAdding, setIsAdding] = useState(false);
+  const { transactions, isLoading: isTransactionsLoading, addTransaction, updateTransaction, deleteTransaction, isAdding, isUpdating, isDeleting } = useTransactions({ monthsBack: 6 });
+  const { categories } = useCategories();
+
+  const [isAddingOpen, setIsAddingOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
 
@@ -35,114 +34,10 @@ export default function FinanceTransactions() {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterPreset, setFilterPreset] = useState<'30d' | 'thisMonth' | 'all'>('30d');
 
-  const { data: transactions, isLoading: isTransactionsLoading } = useQuery({
-    queryKey: ['transactions', profile?.family_id],
-    queryFn: async () => {
-      if (!profile?.family_id) return [];
-      const from = new Date();
-      from.setMonth(from.getMonth() - 6);
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('family_id', profile.family_id)
-        .gte('date', from.toISOString())
-        .order('date', { ascending: false });
-      if (error) throw error;
-      return data as Transaction[];
-    },
-    enabled: !!profile?.family_id,
-  });
-
-  const { data: categories } = useQuery({
-    queryKey: ['categories', profile?.family_id],
-    queryFn: async () => {
-      if (!profile?.family_id) return [];
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('family_id', profile.family_id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data as Category[];
-    },
-    enabled: !!profile?.family_id,
-  });
-
-  const addTransactionMutation = useMutation({
-    mutationFn: async (newTransaction: Omit<Transaction, 'id' | 'created_at' | 'family_id'>) => {
-      if (!profile?.family_id) throw new Error('缺少家庭信息');
-      const { data, error } = await supabase
-        .from('transactions')
-        .insert({ ...newTransaction, family_id: profile.family_id })
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      setIsAdding(false);
-      setAmount('');
-      setCategory('');
-      setDescription('');
-      setDate(new Date().toISOString().slice(0, 10));
-      pushToast({ variant: 'success', title: '已保存', message: '交易已添加。' });
-    },
-    onError: (err: any) => {
-      pushToast({ variant: 'danger', title: '保存失败', message: toUserMessage(err) });
-    },
-  });
-
-  const updateTransactionMutation = useMutation({
-    mutationFn: async (payload: { id: string; patch: Partial<Transaction> }) => {
-      const { data, error } = await supabase
-        .from('transactions')
-        .update(payload.patch)
-        .eq('id', payload.id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data as Transaction;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      pushToast({ variant: 'success', title: '已更新', message: '交易已更新。' });
-      setIsEditing(false);
-      setEditingTransactionId(null);
-      setAmount('');
-      setCategory('');
-      setDescription('');
-      setDate(new Date().toISOString().slice(0, 10));
-    },
-    onError: (err: any) => {
-      pushToast({ variant: 'danger', title: '更新失败', message: toUserMessage(err) });
-    },
-  });
-
-  const deleteTransactionMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('transactions').delete().eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      pushToast({ variant: 'success', title: '已删除', message: '交易已删除。' });
-    },
-    onError: (err: any) => {
-      pushToast({ variant: 'danger', title: '删除失败', message: toUserMessage(err) });
-    },
-  });
-
   const filteredTransactions = useMemo(() => {
     const all = transactions ?? [];
     const now = new Date();
-    const from =
-      filterPreset === 'all'
-        ? null
-        : filterPreset === 'thisMonth'
-          ? new Date(now.getFullYear(), now.getMonth(), 1)
-          : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
+    const from = filterPreset === 'all' ? null : filterPreset === 'thisMonth' ? new Date(now.getFullYear(), now.getMonth(), 1) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const q = keyword.trim().toLowerCase();
     const cat = filterCategory.trim().toLowerCase();
 
@@ -151,41 +46,25 @@ export default function FinanceTransactions() {
       if (filterType !== 'all' && t.type !== filterType) return false;
       if (cat && !t.category.toLowerCase().includes(cat)) return false;
       if (!q) return true;
-      return (
-        t.category.toLowerCase().includes(q) ||
-        (t.description ? t.description.toLowerCase().includes(q) : false) ||
-        String(t.amount).includes(q)
-      );
+      return t.category.toLowerCase().includes(q) || (t.description ? t.description.toLowerCase().includes(q) : false) || String(t.amount).includes(q);
     });
   }, [transactions, filterPreset, filterType, filterCategory, keyword]);
 
-  const latestTransaction = useMemo(() => {
-    const all = transactions ?? [];
-    if (all.length === 0) return null;
-    return all[0];
-  }, [transactions]);
+  const latestTransaction = useMemo(() => (transactions ?? [])[0] ?? null, [transactions]);
 
   const frequentCategoryTemplates = useMemo(() => {
-    const all = transactions ?? [];
     const byCategory = new Map<string, number>();
-    all.filter((t) => (type === 'income' ? t.type === 'income' : t.type === 'expense')).forEach((t) => {
+    (transactions ?? []).filter((t) => (type === 'income' ? t.type === 'income' : t.type === 'expense')).forEach((t) => {
       const key = t.category.trim();
       if (!key) return;
       byCategory.set(key, (byCategory.get(key) ?? 0) + 1);
     });
-    return Array.from(byCategory.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([name]) => name)
-      .slice(0, 8);
+    return Array.from(byCategory.entries()).sort((a, b) => b[1] - a[1]).map(([name]) => name).slice(0, 8);
   }, [transactions, type]);
 
   const recommendedCategories = useMemo(() => {
     const q = description.trim().toLowerCase();
-    const all = transactions ?? [];
-    const candidates =
-      q.length >= 2
-        ? all.filter((t) => (t.description ?? '').toLowerCase().includes(q))
-        : all.filter((t) => (type === 'income' ? t.type === 'income' : t.type === 'expense'));
+    const candidates = q.length >= 2 ? (transactions ?? []).filter((t) => (t.description ?? '').toLowerCase().includes(q)) : (transactions ?? []).filter((t) => (type === 'income' ? t.type === 'income' : t.type === 'expense'));
     const scores = new Map<string, number>();
     candidates.forEach((t) => {
       const key = t.category.trim();
@@ -193,11 +72,7 @@ export default function FinanceTransactions() {
       scores.set(key, (scores.get(key) ?? 0) + 1);
     });
     const current = category.trim();
-    const picked = Array.from(scores.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([name]) => name)
-      .filter((name) => name !== current)
-      .slice(0, 3);
+    const picked = Array.from(scores.entries()).sort((a, b) => b[1] - a[1]).map(([name]) => name).filter((name) => name !== current).slice(0, 3);
     if (picked.length > 0) return picked;
     return frequentCategoryTemplates.slice(0, 3);
   }, [transactions, description, type, category, frequentCategoryTemplates]);
@@ -207,13 +82,7 @@ export default function FinanceTransactions() {
     return (transactions ?? []).find((t) => t.id === editingTransactionId) ?? null;
   }, [transactions, editingTransactionId]);
 
-  const quickCategories = useMemo(() => {
-    const all = categories ?? [];
-    return all
-      .filter((c) => c.kind === 'both' || c.kind === type)
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
-  }, [categories, type]);
+  const quickCategories = useMemo(() => (categories ?? []).filter((c) => c.kind === 'both' || c.kind === type).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN')), [categories, type]);
 
   const openAdd = () => {
     setIsEditing(false);
@@ -224,11 +93,11 @@ export default function FinanceTransactions() {
     setType('expense');
     setDate(new Date().toISOString().slice(0, 10));
     setVisibility('family');
-    setIsAdding(true);
+    setIsAddingOpen(true);
   };
 
   const openEdit = (t: Transaction) => {
-    setIsAdding(false);
+    setIsAddingOpen(false);
     setIsEditing(true);
     setEditingTransactionId(t.id);
     setAmount(String(t.amount));
@@ -240,277 +109,142 @@ export default function FinanceTransactions() {
   };
 
   const closeEditor = () => {
-    setIsAdding(false);
+    setIsAddingOpen(false);
     setIsEditing(false);
     setEditingTransactionId(null);
   };
 
-  if (isProfileLoading) {
-    return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
-  }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const basePayload = { visibility, amount: parseFloat(amount), category: category.trim(), description: description.trim() || null, type, date: new Date(`${date}T12:00:00`).toISOString() };
+    if (isEditing && editingTransaction) {
+      updateTransaction({ id: editingTransaction.id, patch: basePayload });
+      setIsEditing(false);
+      setEditingTransactionId(null);
+      setAmount('');
+      setCategory('');
+      setDescription('');
+      return;
+    }
+    addTransaction({ ...basePayload, owner_user_id: profile!.id } as any);
+    setAmount('');
+    setCategory('');
+    setDescription('');
+    setDate(new Date().toISOString().slice(0, 10));
+  };
+
+  if (isProfileLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
 
   return (
     <Page>
       <PageHeader>
-        <div className="space-y-1">
-          <PageTitle>交易记录</PageTitle>
-          <PageDescription>查看和管理所有交易记录。</PageDescription>
-        </div>
+        <PageTitle>交易记录</PageTitle>
+        <PageDescription>查看和管理所有交易记录。</PageDescription>
         <PageActions>
-          <Button onClick={() => (isAdding || isEditing ? closeEditor() : openAdd())}>
-            <Plus className="h-4 w-4" />
-            记一笔
-          </Button>
+          <Button onClick={() => (isAddingOpen || isEditing ? closeEditor() : openAdd())}><Plus className="h-4 w-4" />记一笔</Button>
         </PageActions>
       </PageHeader>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle>筛选</CardTitle>
-          <CardDescription>按时间、类型、分类与关键词快速定位。</CardDescription>
-        </CardHeader>
+        <CardHeader className="pb-3"><CardTitle>筛选</CardTitle></CardHeader>
         <CardContent className="pt-0">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             <div className="space-y-1.5 md:col-span-2">
-              <label className="text-sm font-medium text-foreground">关键词</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="金额、分类、备注…" className="pl-9" />
-              </div>
+              <label className="text-sm font-medium">关键词</label>
+              <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="金额、分类、备注…" className="pl-9" /></div>
             </div>
-
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">时间</label>
-              <select
-                value={filterPreset}
-                onChange={(e) => setFilterPreset(e.target.value as any)}
-                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
-              >
+              <label className="text-sm font-medium">时间</label>
+              <select value={filterPreset} onChange={(e) => setFilterPreset(e.target.value as any)} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
                 <option value="30d">近 30 天</option>
                 <option value="thisMonth">本月</option>
                 <option value="all">全部</option>
               </select>
             </div>
-
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">类型</label>
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value as any)}
-                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
-              >
+              <label className="text-sm font-medium">类型</label>
+              <select value={filterType} onChange={(e) => setFilterType(e.target.value as any)} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
                 <option value="all">全部</option>
                 <option value="expense">支出</option>
                 <option value="income">收入</option>
               </select>
             </div>
-
             <div className="space-y-1.5 md:col-span-2">
-              <label className="text-sm font-medium text-foreground">分类包含</label>
-              <Input
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                placeholder="例如：餐饮"
-                list="filter-category-options"
-              />
-              <datalist id="filter-category-options">
-                {(categories ?? []).map((c) => (
-                  <option key={c.id} value={c.name} />
-                ))}
-              </datalist>
+              <label className="text-sm font-medium">分类</label>
+              <Input value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} placeholder="例如：餐饮" list="filter-category-options" />
+              <datalist id="filter-category-options">{(categories ?? []).map((c) => <option key={c.id} value={c.name} />)}</datalist>
             </div>
-
             <div className="flex items-end md:col-span-2">
-              <Button
-                variant="secondary"
-                className="w-full"
-                onClick={() => {
-                  setKeyword('');
-                  setFilterType('all');
-                  setFilterCategory('');
-                  setFilterPreset('30d');
-                }}
-              >
-                重置筛选
-              </Button>
+              <Button variant="secondary" className="w-full" onClick={() => { setKeyword(''); setFilterType('all'); setFilterCategory(''); setFilterPreset('30d'); }}>重置筛选</Button>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {(isAdding || isEditing) && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center"
-          onClick={closeEditor}
-        >
+      {(isAddingOpen || isEditing) && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={closeEditor}>
           <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <CardTitle>{isEditing ? '编辑交易' : '添加新交易'}</CardTitle>
-                    <CardDescription>{isEditing ? '更新交易信息并保存。' : '快速录入，后续可在列表里编辑与补充。'}</CardDescription>
-                  </div>
-                  <button
-                    className="grid h-9 w-9 place-items-center rounded-xl text-muted-foreground hover:bg-accent"
-                    onClick={closeEditor}
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
+                  <div><CardTitle>{isEditing ? '编辑交易' : '添加新交易'}</CardTitle><CardDescription>快速录入</CardDescription></div>
+                  <button className="grid h-9 w-9 place-items-center rounded-xl text-muted-foreground hover:bg-accent" onClick={closeEditor}><X className="h-5 w-5" /></button>
                 </div>
               </CardHeader>
               <CardContent>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const basePayload = {
-                      visibility,
-                      amount: parseFloat(amount),
-                      category: category.trim(),
-                      description: description.trim() ? description.trim() : null,
-                      type,
-                      date: new Date(`${date}T12:00:00`).toISOString(),
-                    };
-
-                    if (isEditing && editingTransaction) {
-                      updateTransactionMutation.mutate({ id: editingTransaction.id, patch: basePayload });
-                      return;
-                    }
-                    addTransactionMutation.mutate({ ...basePayload, owner_user_id: profile!.id } as any);
-                  }}
-                  className="space-y-4"
-                >
-                  {isAdding && latestTransaction ? (
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  {isAddingOpen && latestTransaction && (
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2">
-                      <div className="text-xs text-muted-foreground">
-                        最近一笔：{latestTransaction.type === 'income' ? '+' : '-'}¥{latestTransaction.amount.toFixed(2)} · {latestTransaction.category}
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          setAmount(String(latestTransaction.amount));
-                          setCategory(latestTransaction.category);
-                          setDescription(latestTransaction.description ?? '');
-                          setType(latestTransaction.type === 'income' ? 'income' : 'expense');
-                          setVisibility(latestTransaction.visibility ?? 'family');
-                          setDate(new Date().toISOString().slice(0, 10));
-                        }}
-                      >
-                        重复上一笔
-                      </Button>
+                      <div className="text-xs text-muted-foreground">最近：{latestTransaction.type === 'income' ? '+' : '-'}¥{latestTransaction.amount.toFixed(2)} · {latestTransaction.category}</div>
+                      <Button type="button" size="sm" variant="secondary" onClick={() => { setAmount(String(latestTransaction.amount)); setCategory(latestTransaction.category); setDescription(latestTransaction.description ?? ''); setType(latestTransaction.type === 'income' ? 'income' : 'expense'); setVisibility(latestTransaction.visibility ?? 'family'); }}>重复</Button>
                     </div>
-                  ) : null}
-
+                  )}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-foreground">类型</label>
+                      <label className="text-sm font-medium">类型</label>
                       <div className="grid grid-cols-2 gap-2">
-                        <Button type="button" variant={type === 'expense' ? 'danger' : 'secondary'} onClick={() => setType('expense')}>
-                          支出
-                        </Button>
-                        <Button type="button" variant={type === 'income' ? 'primary' : 'secondary'} onClick={() => setType('income')}>
-                          收入
-                        </Button>
+                        <Button type="button" variant={type === 'expense' ? 'danger' : 'secondary'} onClick={() => setType('expense')}>支出</Button>
+                        <Button type="button" variant={type === 'income' ? 'primary' : 'secondary'} onClick={() => setType('income')}>收入</Button>
                       </div>
                     </div>
-
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-foreground">可见范围</label>
-                      <select
-                        value={visibility}
-                        onChange={(e) => setVisibility(e.target.value as any)}
-                        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                      >
+                      <label className="text-sm font-medium">可见范围</label>
+                      <select value={visibility} onChange={(e) => setVisibility(e.target.value as any)} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
                         <option value="family">家庭可见</option>
                         <option value="private">仅自己</option>
                       </select>
                     </div>
-
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-foreground">日期</label>
-                      <div className="relative">
-                        <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="pl-9" />
-                      </div>
+                      <label className="text-sm font-medium">日期</label>
+                      <div className="relative"><Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="pl-9" /></div>
                     </div>
-
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-foreground">金额</label>
+                      <label className="text-sm font-medium">金额</label>
                       <Input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
                     </div>
-
                     <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-sm font-medium text-foreground">分类</label>
+                      <label className="text-sm font-medium">分类</label>
                       {recommendedCategories.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                           <div className="text-xs text-muted-foreground">推荐</div>
                           {recommendedCategories.map((name) => (
-                            <button
-                              key={name}
-                              type="button"
-                              className={cn(
-                                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                                name === category
-                                  ? 'border-primary/30 bg-primary/10 text-foreground'
-                                  : 'border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground',
-                              )}
-                              onClick={() => setCategory(name)}
-                            >
-                              {name}
-                            </button>
+                            <button key={name} type="button" className={cn('rounded-full border px-3 py-1 text-xs font-medium', name === category ? 'border-primary/30 bg-primary/10' : 'border-border bg-card')} onClick={() => setCategory(name)}>{name}</button>
                           ))}
                         </div>
                       )}
-                      <Input
-                        type="text"
-                        required
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        placeholder="例如：餐饮、交通"
-                        list="category-options"
-                      />
-                      <datalist id="category-options">
-                        {(categories ?? []).map((c) => (
-                          <option key={c.id} value={c.name} />
-                        ))}
-                      </datalist>
+                      <Input type="text" required value={category} onChange={(e) => setCategory(e.target.value)} placeholder="例如：餐饮、交通" list="category-options" />
+                      <datalist id="category-options">{(categories ?? []).map((c) => <option key={c.id} value={c.name} />)}</datalist>
                       {quickCategories.length > 0 && (
                         <div className="flex flex-wrap gap-2 mt-2">
                           {quickCategories.slice(0, 8).map((c) => (
-                            <button
-                              key={c.id}
-                              type="button"
-                              className={cn(
-                                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                                c.name === category
-                                  ? 'border-primary/30 bg-primary/10 text-foreground'
-                                  : 'border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground',
-                              )}
-                              onClick={() => setCategory(c.name)}
-                            >
-                              {c.name}
-                            </button>
+                            <button key={c.id} type="button" className={cn('rounded-full border px-3 py-1 text-xs font-medium', c.name === category ? 'border-primary/30 bg-primary/10' : 'border-border bg-card')} onClick={() => setCategory(c.name)}>{c.name}</button>
                           ))}
                         </div>
                       )}
                     </div>
-
-                    <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-sm font-medium text-foreground">描述（选填）</label>
-                      <Input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="备注信息" />
-                    </div>
+                    <div className="space-y-1.5 md:col-span-2"><label className="text-sm font-medium">描述（选填）</label><Input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="备注信息" /></div>
                   </div>
-
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="secondary" onClick={closeEditor}>
-                      取消
-                    </Button>
-                    <Button type="submit" disabled={addTransactionMutation.isPending || updateTransactionMutation.isPending}>
-                      {addTransactionMutation.isPending || updateTransactionMutation.isPending ? '保存中…' : '保存'}
-                    </Button>
-                  </div>
+                  <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={closeEditor}>取消</Button><Button type="submit" disabled={isAdding || isUpdating}>{isAdding || isUpdating ? '保存中…' : '保存'}</Button></div>
                 </form>
               </CardContent>
             </Card>
@@ -519,66 +253,26 @@ export default function FinanceTransactions() {
       )}
 
       <Card className="overflow-hidden">
-        <CardHeader className="pb-3">
-          <CardTitle>最近交易</CardTitle>
-          <CardDescription>当前显示 {filteredTransactions.length} 条记录。</CardDescription>
-        </CardHeader>
+        <CardHeader className="pb-3"><CardTitle>最近交易</CardTitle><CardDescription>当前显示 {filteredTransactions.length} 条记录。</CardDescription></CardHeader>
         <CardContent className="pt-0">
-          {isTransactionsLoading ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">加载中…</div>
-          ) : filteredTransactions.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">暂无交易记录</div>
-          ) : (
+          {isTransactionsLoading ? <div className="py-10 text-center text-sm text-muted-foreground">加载中…</div> : filteredTransactions.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">暂无交易记录</div> : (
             <div className="divide-y divide-border rounded-xl border border-border">
               {filteredTransactions.map((transaction) => (
                 <div key={transaction.id} className="flex items-center justify-between gap-4 px-4 py-4 hover:bg-accent/40">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div
-                      className={cn(
-                        'grid h-9 w-9 place-items-center rounded-xl',
-                        transaction.type === 'income' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-rose-500/10 text-rose-700 dark:text-rose-300',
-                      )}
-                    >
+                    <div className={cn('grid h-9 w-9 place-items-center rounded-xl', transaction.type === 'income' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-rose-500/10 text-rose-700')}>
                       {transaction.type === 'income' ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                     </div>
                     <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <div className="truncate text-sm font-medium">{transaction.category}</div>
-                        {transaction.visibility === 'private' ? <Badge variant="warning">私密</Badge> : null}
-                      </div>
+                      <div className="flex min-w-0 items-center gap-2"><div className="truncate text-sm font-medium">{transaction.category}</div>{transaction.visibility === 'private' ? <Badge variant="warning">私密</Badge> : null}</div>
                       <div className="truncate text-xs text-muted-foreground">{format(new Date(transaction.date), 'PPP', { locale: zhCN })}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <div
-                        className={cn(
-                          'text-sm font-semibold',
-                          transaction.type === 'income' ? 'text-emerald-600' : 'text-foreground',
-                        )}
-                      >
-                        {transaction.type === 'income' ? '+' : '-'}¥{transaction.amount.toFixed(2)}
-                      </div>
-                      {transaction.description && (
-                        <div className="text-xs text-muted-foreground">{transaction.description}</div>
-                      )}
-                    </div>
-
+                    <div className="text-right"><div className={cn('text-sm font-semibold', transaction.type === 'income' ? 'text-emerald-600' : '')}>{transaction.type === 'income' ? '+' : '-'}¥{transaction.amount.toFixed(2)}</div>{transaction.description && <div className="text-xs text-muted-foreground">{transaction.description}</div>}</div>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(transaction)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          const ok = window.confirm('确认删除这条交易吗？此操作不可撤销。');
-                          if (!ok) return;
-                          deleteTransactionMutation.mutate(transaction.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(transaction)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => { if (window.confirm('确认删除？')) deleteTransaction(transaction.id); }}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                   </div>
                 </div>

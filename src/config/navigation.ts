@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { Bot, CircleUser, Heart, LayoutDashboard, Receipt, PiggyBank, Repeat, Settings, Tags, Target, TrendingUp, Users, Wallet } from 'lucide-react';
+import { BarChart3, Bot, CircleUser, Heart, LayoutDashboard, Receipt, PiggyBank, Repeat, Settings, Tags, Target, TrendingUp, Users, Wallet } from 'lucide-react';
 
 export type NavNode = {
   name: string;
@@ -21,6 +21,7 @@ export const navigation: NavNode[] = [
     icon: Wallet,
     children: [
       { name: '概览', href: '/finance', icon: LayoutDashboard },
+      { name: '资产统计', href: '/finance/assets', icon: BarChart3 },
       { name: '交易记录', href: '/finance/transactions', icon: Receipt },
       { name: '预算管理', href: '/finance/budgets', icon: PiggyBank },
       { name: '分类管理', href: '/finance/categories', icon: Tags },

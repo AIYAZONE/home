@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
-import { FundAccount, AllocationRule } from '@/types';
-import { Loader2, Plus, Shield, Target, Sparkles, Trash2, Pencil, TrendingUp, ChevronDown, ChevronUp, Info, Lightbulb, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useAllocationRules } from '@/hooks/useAllocationRules';
+import { AllocationRule, FundAccount, FundAllocation } from '@/types';
+import { ArrowDownUp, Loader2, Plus, Shield, Target, Sparkles, Trash2, Pencil, TrendingUp, ChevronDown, ChevronUp, Info, Lightbulb, AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Alert } from '@/components/ui/alert';
@@ -64,6 +66,9 @@ const fundKindConfig: Record<string, {
   },
 };
 
+type FundKind = 'safety' | 'goal' | 'dream';
+type FundAccountPayload = Omit<FundAccount, 'id' | 'created_at' | 'updated_at' | 'family_id'>;
+
 export default function FundManager() {
   const { data: profile } = useProfile();
   const queryClient = useQueryClient();
@@ -72,6 +77,16 @@ export default function FundManager() {
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [expandedGuide, setExpandedGuide] = useState(true);
   const [selectedKind, setSelectedKind] = useState<'safety' | 'goal' | 'dream' | null>(null);
+  const [adjustingFund, setAdjustingFund] = useState<FundAccount | null>(null);
+  const [adjustKind, setAdjustKind] = useState<'deposit' | 'withdrawal' | 'adjustment'>('deposit');
+  const [adjustDirection, setAdjustDirection] = useState<'increase' | 'decrease'>('increase');
+  const [adjustAmount, setAdjustAmount] = useState('');
+  const [adjustNote, setAdjustNote] = useState('');
+  const [editingRuleFund, setEditingRuleFund] = useState<FundAccount | null>(null);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [rulePercentage, setRulePercentage] = useState('');
+  const [rulePriority, setRulePriority] = useState('');
+  const [ruleActive, setRuleActive] = useState(true);
 
   const [formName, setFormName] = useState('');
   const [formKind, setFormKind] = useState<'safety' | 'goal' | 'dream'>('safety');
@@ -96,8 +111,32 @@ export default function FundManager() {
     enabled: !!profile?.family_id,
   });
 
+  const { data: allocations } = useQuery({
+    queryKey: ['fund_allocations', profile?.family_id],
+    queryFn: async () => {
+      if (!profile?.family_id) return [];
+      const { data, error } = await supabase
+        .from('fund_allocations')
+        .select('*')
+        .eq('family_id', profile.family_id)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return data as FundAllocation[];
+    },
+    enabled: !!profile?.family_id,
+  });
+
+  const {
+    rules: allocationRules,
+    isLoading: isRulesLoading,
+    upsertRule,
+    deleteRule,
+    isDeleting: isDeletingRule,
+  } = useAllocationRules();
+
   const createFundMutation = useMutation({
-    mutationFn: async (payload: Omit<FundAccount, 'id' | 'created_at' | 'updated_at'>) => {
+    mutationFn: async (payload: FundAccountPayload) => {
       if (!profile?.family_id) throw new Error('缺少家庭信息');
       const { data, error } = await supabase
         .from('fund_accounts')
@@ -113,7 +152,7 @@ export default function FundManager() {
       setIsAdding(false);
       pushToast({ variant: 'success', title: '已创建', message: '基金账户已创建。' });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       pushToast({ variant: 'danger', title: '创建失败', message: toUserMessage(err) });
     },
   });
@@ -135,7 +174,7 @@ export default function FundManager() {
       setIsEditing(null);
       pushToast({ variant: 'success', title: '已更新', message: '基金账户已更新。' });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       pushToast({ variant: 'danger', title: '更新失败', message: toUserMessage(err) });
     },
   });
@@ -149,10 +188,94 @@ export default function FundManager() {
       queryClient.invalidateQueries({ queryKey: ['fund_accounts'] });
       pushToast({ variant: 'success', title: '已删除', message: '基金账户已删除。' });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       pushToast({ variant: 'danger', title: '删除失败', message: toUserMessage(err) });
     },
   });
+
+  const closeAdjust = () => {
+    setAdjustingFund(null);
+    setAdjustKind('deposit');
+    setAdjustDirection('increase');
+    setAdjustAmount('');
+    setAdjustNote('');
+  };
+
+  const openAdjust = (fund: FundAccount) => {
+    setAdjustingFund(fund);
+    setAdjustKind('deposit');
+    setAdjustDirection('increase');
+    setAdjustAmount('');
+    setAdjustNote('');
+  };
+
+  const adjustFundMutation = useMutation({
+    mutationFn: async (payload: {
+      fund: FundAccount;
+      kind: 'deposit' | 'withdrawal' | 'adjustment';
+      direction: 'increase' | 'decrease';
+      amount: number;
+      note: string | null;
+    }) => {
+      if (!profile?.family_id) throw new Error('缺少家庭信息');
+
+      const absAmount = Math.round(Math.abs(payload.amount) * 100) / 100;
+      if (!Number.isFinite(absAmount) || absAmount <= 0) throw new Error('请输入有效金额');
+
+      const delta =
+        payload.kind === 'deposit'
+          ? absAmount
+          : payload.kind === 'withdrawal'
+            ? -absAmount
+            : payload.direction === 'increase'
+              ? absAmount
+              : -absAmount;
+
+      const current = Number(payload.fund.current_amount) || 0;
+      if (current + delta < 0) throw new Error('余额不足，无法完成本次变动');
+
+      const { error: insertError } = await supabase.from('fund_allocations').insert({
+        family_id: profile.family_id,
+        fund_account_id: payload.fund.id,
+        transaction_id: null,
+        amount: delta,
+        kind: payload.kind,
+        note: payload.note,
+      });
+      if (insertError) throw insertError;
+
+      const { error: rpcError } = await supabase.rpc('update_fund_account_amount', {
+        p_fund_id: payload.fund.id,
+        p_delta: delta,
+      });
+
+      if (!rpcError) return;
+
+      const { error: updateError } = await supabase
+        .from('fund_accounts')
+        .update({ current_amount: current + delta, updated_at: new Date().toISOString() })
+        .eq('id', payload.fund.id);
+      if (updateError) throw updateError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fund_accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['fund_allocations'] });
+      closeAdjust();
+      pushToast({ variant: 'success', title: '已更新', message: '进度已更新。' });
+    },
+    onError: (err: unknown) => {
+      pushToast({ variant: 'danger', title: '更新失败', message: toUserMessage(err) });
+    },
+  });
+
+  useEffect(() => {
+    if (!adjustingFund) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeAdjust();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [adjustingFund]);
 
   const resetForm = () => {
     setFormName('');
@@ -160,6 +283,19 @@ export default function FundManager() {
     setFormTargetAmount('');
     setFormTargetDate('');
     setFormDescription('');
+  };
+
+  const closeFundForm = () => {
+    resetForm();
+    setIsAdding(false);
+    setIsEditing(null);
+  };
+
+  const openCreateFund = (kind: FundKind = 'safety') => {
+    resetForm();
+    setFormKind(kind);
+    setIsEditing(null);
+    setIsAdding(true);
   };
 
   const openEdit = (fund: FundAccount) => {
@@ -172,23 +308,48 @@ export default function FundManager() {
     setFormDescription(fund.description || '');
   };
 
+  useEffect(() => {
+    const isOpen = Boolean(isAdding || isEditing);
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeByEffect = () => {
+      setFormName('');
+      setFormKind('safety');
+      setFormTargetAmount('');
+      setFormTargetDate('');
+      setFormDescription('');
+      setIsAdding(false);
+      setIsEditing(null);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeByEffect();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isAdding, isEditing]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const existing = isEditing ? (funds ?? []).find((f) => f.id === isEditing) : undefined;
     const payload = {
       name: formName.trim(),
       kind: formKind,
       target_amount: parseFloat(formTargetAmount) || 0,
-      current_amount: 0,
+      current_amount: existing ? Number(existing.current_amount) : 0,
       target_date: formTargetDate || null,
       description: formDescription.trim() || null,
       priority: 0,
       is_active: true,
-    };
+    } satisfies FundAccountPayload;
 
     if (isEditing) {
       updateFundMutation.mutate({ id: isEditing, updates: payload });
     } else {
-      createFundMutation.mutate(payload as any);
+      createFundMutation.mutate(payload);
     }
   };
 
@@ -218,6 +379,58 @@ export default function FundManager() {
   };
 
   const fundStatus = getFundStatus();
+
+  const recentAllocationsByFund = useMemo(() => {
+    const map: Record<string, FundAllocation[]> = {};
+    for (const a of allocations ?? []) {
+      if (!map[a.fund_account_id]) map[a.fund_account_id] = [];
+      if (map[a.fund_account_id].length < 3) map[a.fund_account_id].push(a);
+    }
+    return map;
+  }, [allocations]);
+
+  const ruleByFundId = useMemo(() => {
+    const map: Record<string, AllocationRule> = {};
+    for (const r of allocationRules ?? []) {
+      if (!map[r.fund_account_id]) map[r.fund_account_id] = r;
+    }
+    return map;
+  }, [allocationRules]);
+
+  const activeRulePercentTotal = useMemo(() => {
+    return (allocationRules ?? []).filter((r) => r.is_active).reduce((acc, r) => acc + Number(r.percentage), 0);
+  }, [allocationRules]);
+
+  const closeRuleEditor = () => {
+    setEditingRuleFund(null);
+    setEditingRuleId(null);
+    setRulePercentage('');
+    setRulePriority('');
+    setRuleActive(true);
+  };
+
+  const openRuleEditor = (fund: FundAccount) => {
+    const existing = ruleByFundId[fund.id];
+    setEditingRuleFund(fund);
+    setEditingRuleId(existing?.id ?? null);
+    setRulePercentage(existing ? String(existing.percentage) : '');
+    setRulePriority(existing ? String(existing.priority) : String(fund.priority));
+    setRuleActive(existing ? existing.is_active : true);
+  };
+
+  useEffect(() => {
+    if (!editingRuleFund) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeRuleEditor();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [editingRuleFund]);
 
   return (
     <Card className="overflow-hidden">
@@ -310,7 +523,7 @@ export default function FundManager() {
           {expandedGuide && (
             <div className="border-t border-border px-4 pb-4 pt-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                {['safety', 'goal', 'dream'].map((kind, idx) => {
+                {(['safety', 'goal', 'dream'] as const).map((kind, idx) => {
                   const cfg = fundKindConfig[kind];
                   const Icon = cfg.icon;
                   const kindFunds = fundsByKind[kind] || [];
@@ -326,7 +539,7 @@ export default function FundManager() {
                         cfg.borderColor,
                         selectedKind === kind ? 'ring-2 ring-primary/50' : 'hover:shadow-md'
                       )}
-                      onClick={() => setSelectedKind(selectedKind === kind ? null : kind as any)}
+                      onClick={() => setSelectedKind(selectedKind === kind ? null : kind)}
                     >
                       <div className="flex items-center gap-2 mb-2">
                         <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg', cfg.bgColor)}>
@@ -392,99 +605,83 @@ export default function FundManager() {
           )}
         </div>
 
-        {(isAdding || isEditing) && (
-          <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-muted/20 p-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-border">
-              <Plus className="h-4 w-4" />
-              <span className="font-medium">{isEditing ? '编辑基金' : '创建新基金'}</span>
+        <Card className="bg-card/60">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <CardTitle className="text-base">存钱计划</CardTitle>
+                <CardDescription className="truncate">把每次收入按比例分配到不同基金，形成可追溯的存钱流水。</CardDescription>
+              </div>
+              <Badge variant={activeRulePercentTotal > 100 ? 'danger' : activeRulePercentTotal === 100 ? 'success' : 'default'}>
+                {activeRulePercentTotal.toFixed(0)}%
+              </Badge>
             </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">基金名称 *</label>
-                <Input
-                  required
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="例如：应急储备金、教育基金"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">基金类型 *</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {Object.entries(fundKindConfig).map(([key, cfg]) => {
-                    const Icon = cfg.icon;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setFormKind(key as any)}
-                        className={cn(
-                          'flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all',
-                          formKind === key 
-                            ? cn(cfg.bgColor, cfg.color, 'ring-2 ring-primary/50', cfg.borderColor) 
-                            : 'bg-muted/50 hover:bg-muted border border-transparent'
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {cfg.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-muted-foreground">{fundKindConfig[formKind].suggestedAmount}</p>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">目标金额 *</label>
-                <Input
-                  type="number"
-                  value={formTargetAmount}
-                  onChange={(e) => setFormTargetAmount(e.target.value)}
-                  placeholder="0.00"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">目标日期（可选）</label>
-                <Input
-                  type="date"
-                  value={formTargetDate}
-                  onChange={(e) => setFormTargetDate(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-1.5 md:col-span-2">
-                <label className="text-sm font-medium text-foreground">描述（可选）</label>
-                <Input
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                  placeholder="备注信息，例如：用于应对突发失业情况"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  resetForm();
-                  setIsAdding(false);
-                  setIsEditing(null);
-                }}
-              >
-                取消
-              </Button>
-              <Button type="submit" disabled={createFundMutation.isPending || updateFundMutation.isPending}>
-                {createFundMutation.isPending || updateFundMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+          </CardHeader>
+          <CardContent className="pt-0 space-y-3">
+            {isRulesLoading ? (
+              <div className="text-sm text-muted-foreground">加载规则中…</div>
+            ) : (funds ?? []).length === 0 ? (
+              <div className="text-sm text-muted-foreground">创建基金后才能设置存钱计划规则。</div>
+            ) : (
+              <div className="space-y-2">
+                {(funds ?? []).map((fund) => {
+                  const cfg = fundKindConfig[fund.kind];
+                  const rule = ruleByFundId[fund.id];
+                  const isActive = !!rule?.is_active;
+                  const pct = isActive ? Number(rule?.percentage ?? 0) : 0;
+                  return (
+                    <div key={fund.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/40 p-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="truncate font-medium">{fund.name}</div>
+                          <Badge variant="default" className="text-xs">{cfg.label}</Badge>
+                          {isActive ? (
+                            <Badge variant="success" className="text-xs">{pct.toFixed(0)}%</Badge>
+                          ) : (
+                            <Badge variant="default" className="text-xs">未启用</Badge>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground">优先级 {rule ? rule.priority : fund.priority}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => openRuleEditor(fund)}>
+                          <Pencil className="h-4 w-4" />
+                          {rule ? '编辑' : '设置'}
+                        </Button>
+                        {rule ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const ok = window.confirm('确认删除该规则吗？');
+                              if (!ok) return;
+                              deleteRule(rule.id);
+                            }}
+                            disabled={isDeletingRule}
+                            aria-label="删除规则"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+                {activeRulePercentTotal > 100 ? (
+                  <Alert variant="warning" className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-medium">规则总和超过 100%</div>
+                      <div className="text-sm opacity-90">请调整各基金的分配比例，确保启用规则的总和不超过 100%。</div>
+                    </div>
+                  </Alert>
+                ) : activeRulePercentTotal < 100 ? (
+                  <div className="text-xs text-muted-foreground">剩余 {(100 - activeRulePercentTotal).toFixed(0)}% 的收入不会自动分配到基金。</div>
                 ) : null}
-                {isEditing ? '更新' : '创建'}
-              </Button>
-            </div>
-          </form>
-        )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {isFundsLoading ? (
           <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>
@@ -494,7 +691,7 @@ export default function FundManager() {
             <div className="text-lg font-medium mb-2">开始建立你的 3 层基金结构</div>
             <div className="text-sm text-muted-foreground mb-4">建议从安全垫开始，为家庭财务建立护城河</div>
             {!isAdding && (
-              <Button onClick={() => { resetForm(); setFormKind('safety'); setIsAdding(true); }}>
+              <Button onClick={() => openCreateFund('safety')}>
                 <Plus className="h-4 w-4" />
                 创建第一个基金
               </Button>
@@ -502,7 +699,7 @@ export default function FundManager() {
           </div>
         ) : (
           <div className="space-y-6">
-            {['safety', 'goal', 'dream'].map((kind) => {
+            {(['safety', 'goal', 'dream'] as const).map((kind) => {
               const kindFunds = fundsByKind[kind] || [];
               const cfg = fundKindConfig[kind];
               const Icon = cfg.icon;
@@ -537,11 +734,7 @@ export default function FundManager() {
                     <div className="rounded-xl border border-dashed border-border p-6 text-center">
                       <Icon className={cn('h-8 w-8 mx-auto mb-2 opacity-30', cfg.color)} />
                       <div className="text-sm text-muted-foreground mb-3">暂无 {cfg.label}</div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => { resetForm(); setFormKind(kind as any); setIsAdding(true); }}
-                      >
+                      <Button variant="secondary" size="sm" onClick={() => openCreateFund(kind)}>
                         <Plus className="h-4 w-4" />
                         添加 {cfg.label}
                       </Button>
@@ -599,8 +792,27 @@ export default function FundManager() {
                                       style={{ width: `${Math.min(100, progress)}%` }}
                                     />
                                   </div>
+                                  {(recentAllocationsByFund[fund.id]?.length ?? 0) > 0 && (
+                                    <div className="mt-3 space-y-1">
+                                      {recentAllocationsByFund[fund.id].map((a) => {
+                                        const label = a.kind === 'deposit' ? '存入' : a.kind === 'withdrawal' ? '取出' : '调整';
+                                        const value = Number(a.amount);
+                                        return (
+                                          <div key={a.id} className="flex items-center justify-between text-xs text-muted-foreground">
+                                            <span className="truncate">{label}{a.note ? ` · ${a.note}` : ''}</span>
+                                            <span className={cn('shrink-0 font-medium', value >= 0 ? 'text-emerald-600' : 'text-destructive')}>
+                                              {value >= 0 ? '+' : '-'}¥{Math.abs(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-1">
+                                  <Button variant="ghost" size="sm" onClick={() => openAdjust(fund)}>
+                                    <ArrowDownUp className="h-4 w-4" />
+                                  </Button>
                                   <Button variant="ghost" size="sm" onClick={() => openEdit(fund)}>
                                     <Pencil className="h-4 w-4" />
                                   </Button>
@@ -629,13 +841,365 @@ export default function FundManager() {
             })}
 
             {!isAdding && !isEditing && (
-              <Button variant="secondary" className="w-full" onClick={() => { resetForm(); setIsAdding(true); }}>
+              <Button variant="secondary" className="w-full" onClick={() => openCreateFund('safety')}>
                 <Plus className="h-4 w-4" />
                 添加新基金
               </Button>
             )}
           </div>
         )}
+
+        {(isAdding || isEditing) &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+              onClick={closeFundForm}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+                <Card className="border border-border/60 bg-popover shadow-lg">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <CardTitle>{isEditing ? '编辑基金' : '创建新基金'}</CardTitle>
+                        <CardDescription className="truncate">设置基金信息与目标金额。</CardDescription>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={closeFundForm} aria-label="关闭">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-foreground">基金名称 *</label>
+                          <Input
+                            required
+                            value={formName}
+                            onChange={(e) => setFormName(e.target.value)}
+                            placeholder="例如：应急储备金、教育基金"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-foreground">基金类型 *</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            {(Object.entries(fundKindConfig) as Array<[FundKind, (typeof fundKindConfig)[FundKind]]>).map(([key, cfg]) => {
+                              const Icon = cfg.icon;
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  onClick={() => setFormKind(key)}
+                                  className={cn(
+                                    'flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                                    formKind === key
+                                      ? cn(cfg.bgColor, cfg.color, 'ring-2 ring-primary/50', cfg.borderColor)
+                                      : 'bg-muted/50 hover:bg-muted border border-transparent'
+                                  )}
+                                >
+                                  <Icon className="h-4 w-4" />
+                                  {cfg.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="text-xs text-muted-foreground">{fundKindConfig[formKind].suggestedAmount}</p>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-foreground">目标金额 *</label>
+                          <Input
+                            type="number"
+                            value={formTargetAmount}
+                            onChange={(e) => setFormTargetAmount(e.target.value)}
+                            placeholder="0.00"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-foreground">目标日期（可选）</label>
+                          <Input
+                            type="date"
+                            value={formTargetDate}
+                            onChange={(e) => setFormTargetDate(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="space-y-1.5 md:col-span-2">
+                          <label className="text-sm font-medium text-foreground">描述（可选）</label>
+                          <Input
+                            value={formDescription}
+                            onChange={(e) => setFormDescription(e.target.value)}
+                            placeholder="备注信息，例如：用于应对突发失业情况"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" variant="secondary" onClick={closeFundForm}>
+                          取消
+                        </Button>
+                        <Button type="submit" disabled={createFundMutation.isPending || updateFundMutation.isPending}>
+                          {createFundMutation.isPending || updateFundMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : null}
+                          {isEditing ? '更新' : '创建'}
+                        </Button>
+                      </div>
+                    </form>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>,
+            document.body,
+          )}
+
+        {adjustingFund &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+              onClick={closeAdjust}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+                <Card className="border border-border/60 bg-popover shadow-lg">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <CardTitle>更新进度</CardTitle>
+                        <CardDescription className="truncate">{adjustingFund.name}</CardDescription>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={closeAdjust} aria-label="关闭">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1.5">
+                      <div className="text-sm font-medium text-foreground">类型</div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant={adjustKind === 'deposit' ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={() => setAdjustKind('deposit')}
+                        >
+                          存入
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={adjustKind === 'withdrawal' ? 'danger' : 'secondary'}
+                          size="sm"
+                          onClick={() => setAdjustKind('withdrawal')}
+                        >
+                          取出
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={adjustKind === 'adjustment' ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={() => setAdjustKind('adjustment')}
+                        >
+                          调整
+                        </Button>
+                      </div>
+                      {adjustKind === 'adjustment' ? (
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span>方向：</span>
+                          <Button
+                            type="button"
+                            variant={adjustDirection === 'increase' ? 'primary' : 'secondary'}
+                            size="sm"
+                            onClick={() => setAdjustDirection('increase')}
+                          >
+                            增加
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={adjustDirection === 'decrease' ? 'danger' : 'secondary'}
+                            size="sm"
+                            onClick={() => setAdjustDirection('decrease')}
+                          >
+                            减少
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <form
+                      className="space-y-4"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!adjustingFund) return;
+                        adjustFundMutation.mutate({
+                          fund: adjustingFund,
+                          kind: adjustKind,
+                          direction: adjustDirection,
+                          amount: Number(adjustAmount),
+                          note: adjustNote.trim() ? adjustNote.trim() : null,
+                        });
+                      }}
+                    >
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-foreground">金额</label>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          step="0.01"
+                          value={adjustAmount}
+                          onChange={(e) => setAdjustAmount(e.target.value)}
+                          placeholder="0.00"
+                          required
+                        />
+                        <div className="text-xs text-muted-foreground">
+                          当前已存：¥{Number(adjustingFund.current_amount).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-foreground">备注（可选）</label>
+                        <Input value={adjustNote} onChange={(e) => setAdjustNote(e.target.value)} placeholder="例如：工资结余、意外维修" />
+                      </div>
+
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" variant="secondary" onClick={closeAdjust}>
+                          取消
+                        </Button>
+                        <Button type="submit" disabled={adjustFundMutation.isPending}>
+                          {adjustFundMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                          确认
+                        </Button>
+                      </div>
+                    </form>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>,
+            document.body,
+          )}
+
+        {editingRuleFund &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+              onClick={closeRuleEditor}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+                <Card className="border border-border/60 bg-popover shadow-lg">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <CardTitle>存钱计划规则</CardTitle>
+                        <CardDescription className="truncate">{editingRuleFund.name}</CardDescription>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={closeRuleEditor} aria-label="关闭">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-foreground">启用</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-border bg-background"
+                          checked={ruleActive}
+                          onChange={(e) => setRuleActive(e.target.checked)}
+                        />
+                        <span className="text-sm text-muted-foreground">收入入账后参与分配</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-foreground">分配比例（%）</label>
+                        <Input
+                          type="number"
+                          value={rulePercentage}
+                          onChange={(e) => setRulePercentage(e.target.value)}
+                          placeholder="例如 20"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-foreground">优先级</label>
+                        <Input
+                          type="number"
+                          value={rulePriority}
+                          onChange={(e) => setRulePriority(e.target.value)}
+                          placeholder="例如 1"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="secondary" onClick={closeRuleEditor}>
+                        取消
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          if (!editingRuleFund) return;
+                          const prio = rulePriority.trim() === '' ? 0 : Math.trunc(Number(rulePriority));
+                          const pct = Math.round(Number(rulePercentage) * 100) / 100;
+
+                          if (!Number.isFinite(prio)) {
+                            pushToast({ variant: 'danger', title: '保存失败', message: '请输入有效优先级。' });
+                            return;
+                          }
+
+                          if (ruleActive) {
+                            if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+                              pushToast({ variant: 'danger', title: '保存失败', message: '请输入 0-100 之间的百分比。' });
+                              return;
+                            }
+                          } else {
+                            if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+                              pushToast({ variant: 'danger', title: '保存失败', message: '请输入 0-100 之间的百分比。' });
+                              return;
+                            }
+                            if (!editingRuleId) {
+                              closeRuleEditor();
+                              return;
+                            }
+                          }
+
+                          const existing = editingRuleId ? ruleByFundId[editingRuleFund.id] : undefined;
+                          const existingPct = existing && existing.is_active ? Number(existing.percentage) : 0;
+                          const nextPct = ruleActive ? pct : 0;
+                          const nextTotal = activeRulePercentTotal - existingPct + nextPct;
+                          if (nextTotal > 100.000001) {
+                            pushToast({ variant: 'danger', title: '保存失败', message: '启用规则的百分比总和不能超过 100%。' });
+                            return;
+                          }
+
+                          upsertRule(
+                            {
+                              id: editingRuleId ?? undefined,
+                              fund_account_id: editingRuleFund.id,
+                              percentage: pct,
+                              priority: prio,
+                              is_active: ruleActive,
+                            },
+                            { onSuccess: closeRuleEditor },
+                          );
+                        }}
+                      >
+                        保存
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>,
+            document.body,
+          )}
       </CardContent>
     </Card>
   );
