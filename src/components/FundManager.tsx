@@ -7,6 +7,7 @@ import { useAllocationRules } from '@/hooks/useAllocationRules';
 import { AllocationRule, FundAccount, FundAllocation } from '@/types';
 import { ArrowDownUp, Loader2, Plus, Shield, Target, Sparkles, Trash2, Pencil, TrendingUp, ChevronDown, ChevronUp, Info, Lightbulb, AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatMoney, formatPercent } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -373,7 +374,7 @@ export default function FundManager() {
       return { level: 'warning', message: '建议优先创建安全垫基金，建立家庭财务护城河' };
     }
     if (safetyProgress < 100) {
-      return { level: 'info', message: `安全垫进度 ${safetyProgress.toFixed(0)}%，建议优先填满后再投资其他基金` };
+      return { level: 'info', message: `安全垫进度 ${formatPercent(safetyProgress, 0)}，建议优先填满后再投资其他基金` };
     }
     return { level: 'success', message: '安全垫已达标，可以开始投资目标基金和梦想基金' };
   };
@@ -441,7 +442,7 @@ export default function FundManager() {
             <CardTitle>3 层基金体系</CardTitle>
           </div>
           <Badge variant={totalProgress >= 100 ? 'success' : totalProgress >= 50 ? 'warning' : 'default'}>
-            {totalProgress.toFixed(0)}%
+            {formatPercent(totalProgress, 0)}
           </Badge>
         </div>
         <CardDescription>安全垫 → 目标基金 → 梦想基金，按优先级积累家庭财富</CardDescription>
@@ -453,7 +454,7 @@ export default function FundManager() {
               <CardTitle className="text-sm font-medium text-muted-foreground">总目标</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="text-lg font-semibold">¥{totalTarget.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</div>
+              <div className="text-lg font-semibold">{formatMoney(totalTarget)}</div>
             </CardContent>
           </Card>
           <Card className="bg-card/60">
@@ -461,7 +462,7 @@ export default function FundManager() {
               <CardTitle className="text-sm font-medium text-muted-foreground">已积累</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="text-lg font-semibold text-emerald-600">¥{totalCurrent.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</div>
+              <div className="text-lg font-semibold text-emerald-600">{formatMoney(totalCurrent)}</div>
             </CardContent>
           </Card>
           <Card className="bg-card/60">
@@ -469,7 +470,7 @@ export default function FundManager() {
               <CardTitle className="text-sm font-medium text-muted-foreground">总进度</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="text-lg font-semibold">{totalProgress.toFixed(1)}%</div>
+              <div className="text-lg font-semibold">{formatPercent(totalProgress, 1)}</div>
               <div className="mt-2 h-2 w-full rounded-full bg-muted/60">
                 <div
                   className={cn('h-2 rounded-full transition-all', totalProgress >= 100 ? 'bg-emerald-500' : totalProgress >= 50 ? 'bg-amber-500' : 'bg-blue-500')}
@@ -573,7 +574,7 @@ export default function FundManager() {
                         <div className="mt-3 pt-3 border-t border-border">
                           <div className="flex items-center justify-between text-sm">
                             <span className="text-muted-foreground">进度</span>
-                            <span className="font-medium">{kindProgress.toFixed(0)}%</span>
+                          <span className="font-medium">{formatPercent(kindProgress, 0)}</span>
                           </div>
                           <div className="mt-1 h-1.5 w-full rounded-full bg-muted/60">
                             <div
@@ -613,7 +614,7 @@ export default function FundManager() {
                 <CardDescription className="truncate">把每次收入按比例分配到不同基金，形成可追溯的存钱流水。</CardDescription>
               </div>
               <Badge variant={activeRulePercentTotal > 100 ? 'danger' : activeRulePercentTotal === 100 ? 'success' : 'default'}>
-                {activeRulePercentTotal.toFixed(0)}%
+                {formatPercent(activeRulePercentTotal, 0)}
               </Badge>
             </div>
           </CardHeader>
@@ -636,7 +637,7 @@ export default function FundManager() {
                           <div className="truncate font-medium">{fund.name}</div>
                           <Badge variant="default" className="text-xs">{cfg.label}</Badge>
                           {isActive ? (
-                            <Badge variant="success" className="text-xs">{pct.toFixed(0)}%</Badge>
+                            <Badge variant="success" className="text-xs">{formatPercent(pct, 0)}</Badge>
                           ) : (
                             <Badge variant="default" className="text-xs">未启用</Badge>
                           )}
@@ -676,7 +677,7 @@ export default function FundManager() {
                     </div>
                   </Alert>
                 ) : activeRulePercentTotal < 100 ? (
-                  <div className="text-xs text-muted-foreground">剩余 {(100 - activeRulePercentTotal).toFixed(0)}% 的收入不会自动分配到基金。</div>
+                  <div className="text-xs text-muted-foreground">剩余 {formatPercent(100 - activeRulePercentTotal, 0)} 的收入不会自动分配到基金。</div>
                 ) : null}
               </div>
             )}
@@ -725,7 +726,7 @@ export default function FundManager() {
                     <div className="text-right">
                       <div className="text-sm text-muted-foreground">已存 / 目标</div>
                       <div className="font-semibold">
-                        ¥{kindTotal.toLocaleString('zh-CN', { maximumFractionDigits: 0 })} / ¥{kindTarget.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}
+                        {formatMoney(kindTotal, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} / {formatMoney(kindTarget, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </div>
                     </div>
                   </div>
@@ -744,7 +745,7 @@ export default function FundManager() {
                       <div className="mb-3">
                         <div className="flex items-center justify-between text-sm mb-1">
                           <span className="text-muted-foreground">总进度</span>
-                          <span className="font-medium">{kindProgress.toFixed(1)}%</span>
+                          <span className="font-medium">{formatPercent(kindProgress, 1)}</span>
                         </div>
                         <div className="h-2 w-full rounded-full bg-muted/60">
                           <div
@@ -775,15 +776,15 @@ export default function FundManager() {
                                   <div className="mt-3 flex items-center gap-4">
                                     <div className="text-sm">
                                       <span className="text-muted-foreground">已存：</span>
-                                      <span className="font-semibold text-emerald-600">¥{Number(fund.current_amount).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
+                                      <span className="font-semibold text-emerald-600">{formatMoney(fund.current_amount)}</span>
                                     </div>
                                     <div className="text-sm">
                                       <span className="text-muted-foreground">目标：</span>
-                                      <span className="font-semibold">¥{Number(fund.target_amount).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
+                                      <span className="font-semibold">{formatMoney(fund.target_amount)}</span>
                                     </div>
                                     <div className="text-sm">
                                       <span className="text-muted-foreground">进度：</span>
-                                      <span className={cn('font-semibold', progress >= 100 ? 'text-emerald-600' : 'text-foreground')}>{progress.toFixed(1)}%</span>
+                                      <span className={cn('font-semibold', progress >= 100 ? 'text-emerald-600' : 'text-foreground')}>{formatPercent(progress, 1)}</span>
                                     </div>
                                   </div>
                                   <div className="mt-2 h-2 w-full rounded-full bg-muted/60">
@@ -801,7 +802,7 @@ export default function FundManager() {
                                           <div key={a.id} className="flex items-center justify-between text-xs text-muted-foreground">
                                             <span className="truncate">{label}{a.note ? ` · ${a.note}` : ''}</span>
                                             <span className={cn('shrink-0 font-medium', value >= 0 ? 'text-emerald-600' : 'text-destructive')}>
-                                              {value >= 0 ? '+' : '-'}¥{Math.abs(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
+                                              {formatMoney(value, { signDisplay: 'always', minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                                             </span>
                                           </div>
                                         );
@@ -1056,7 +1057,7 @@ export default function FundManager() {
                           required
                         />
                         <div className="text-xs text-muted-foreground">
-                          当前已存：¥{Number(adjustingFund.current_amount).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
+                          当前已存：{formatMoney(adjustingFund.current_amount, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </div>
                       </div>
 

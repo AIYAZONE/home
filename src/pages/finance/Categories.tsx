@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useCategories } from '@/hooks/useCategories';
 import { Loader2, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -6,11 +6,18 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
+import { useNavigate } from 'react-router-dom';
+import { CategoryGuideCard } from '@/components/finance/CategoryGuideCard';
 
 export default function FinanceCategories() {
   const { categories, isLoading, createCategory, deleteCategory, isCreating, isDeleting } = useCategories();
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryKind, setNewCategoryKind] = useState<'expense' | 'income' | 'both'>('expense');
+  const navigate = useNavigate();
+
+  const hasFallbackCategory = useMemo(() => {
+    return (categories ?? []).some((c) => c.name.trim() === '其他' && (c.kind === 'expense' || c.kind === 'both'));
+  }, [categories]);
 
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
 
@@ -20,6 +27,17 @@ export default function FinanceCategories() {
         <PageTitle>分类管理</PageTitle>
         <PageDescription>统一管理家庭分类，交易录入可快捷选择。</PageDescription>
       </PageHeader>
+
+      <CategoryGuideCard
+        totalCategories={(categories ?? []).length}
+        hasFallbackCategory={hasFallbackCategory}
+        isAddingFallback={isCreating}
+        onAddFallbackCategory={() => {
+          if (hasFallbackCategory) return;
+          createCategory({ name: '其他', kind: 'expense' });
+        }}
+        onGoBudgets={() => navigate('/finance/budgets')}
+      />
 
       <Card className="overflow-hidden">
         <CardHeader className="pb-3"><CardTitle>添加分类</CardTitle></CardHeader>

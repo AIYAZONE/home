@@ -41,6 +41,16 @@ export interface UserProfile {
   email: string | null;
 }
 
+export interface FamilyMemberRemark {
+  id: string;
+  family_id: string;
+  owner_user_id: string;
+  member_user_id: string;
+  remark_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Category {
   id: string;
   family_id: string;

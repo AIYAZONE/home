@@ -6,6 +6,7 @@ import { Transaction } from '@/types';
 import { Loader2, Pencil, Plus, Search, Trash2, TrendingDown, TrendingUp, X, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import { compareByLocale, formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -82,7 +83,7 @@ export default function FinanceTransactions() {
     return (transactions ?? []).find((t) => t.id === editingTransactionId) ?? null;
   }, [transactions, editingTransactionId]);
 
-  const quickCategories = useMemo(() => (categories ?? []).filter((c) => c.kind === 'both' || c.kind === type).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN')), [categories, type]);
+  const quickCategories = useMemo(() => (categories ?? []).filter((c) => c.kind === 'both' || c.kind === type).sort((a, b) => compareByLocale(a.name, b.name)), [categories, type]);
 
   const openAdd = () => {
     setIsEditing(false);
@@ -195,7 +196,7 @@ export default function FinanceTransactions() {
                 <form onSubmit={handleSubmit} className="space-y-4">
                   {isAddingOpen && latestTransaction && (
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2">
-                      <div className="text-xs text-muted-foreground">最近：{latestTransaction.type === 'income' ? '+' : '-'}¥{latestTransaction.amount.toFixed(2)} · {latestTransaction.category}</div>
+                      <div className="text-xs text-muted-foreground">最近：{formatMoney(latestTransaction.type === 'income' ? latestTransaction.amount : -latestTransaction.amount, { signDisplay: 'always' })} · {latestTransaction.category}</div>
                       <Button type="button" size="sm" variant="secondary" onClick={() => { setAmount(String(latestTransaction.amount)); setCategory(latestTransaction.category); setDescription(latestTransaction.description ?? ''); setType(latestTransaction.type === 'income' ? 'income' : 'expense'); setVisibility(latestTransaction.visibility ?? 'family'); }}>重复</Button>
                     </div>
                   )}
@@ -269,7 +270,7 @@ export default function FinanceTransactions() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="text-right"><div className={cn('text-sm font-semibold', transaction.type === 'income' ? 'text-emerald-600' : '')}>{transaction.type === 'income' ? '+' : '-'}¥{transaction.amount.toFixed(2)}</div>{transaction.description && <div className="text-xs text-muted-foreground">{transaction.description}</div>}</div>
+                    <div className="text-right"><div className={cn('text-sm font-semibold', transaction.type === 'income' ? 'text-emerald-600' : '')}>{formatMoney(transaction.type === 'income' ? transaction.amount : -transaction.amount, { signDisplay: 'always' })}</div>{transaction.description && <div className="text-xs text-muted-foreground">{transaction.description}</div>}</div>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="sm" onClick={() => openEdit(transaction)}><Pencil className="h-4 w-4" /></Button>
                       <Button variant="ghost" size="sm" onClick={() => { if (window.confirm('确认删除？')) deleteTransaction(transaction.id); }}><Trash2 className="h-4 w-4" /></Button>

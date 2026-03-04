@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
+import { formatMoney } from '@/lib/format';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
 
@@ -106,7 +107,7 @@ export default function FinanceRecurring() {
               <div key={r.id} className="flex items-center justify-between gap-3">
                 <div className="min-w-0 text-sm">
                   <div className="truncate">
-                    {r.category} · {r.type === 'income' ? '+' : '-'}¥{Number(r.amount).toFixed(2)}
+                    {r.category} · {formatMoney(r.type === 'income' ? r.amount : -r.amount, { signDisplay: 'always' })}
                   </div>
                   <div className="text-xs opacity-80">到期日：{r.next_run_date}</div>
                 </div>
@@ -145,7 +146,7 @@ export default function FinanceRecurring() {
                       {!r.active ? <Badge variant="default">已暂停</Badge> : null}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
-                      {r.type === 'income' ? '收入' : '支出'} · ¥{Number(r.amount).toFixed(2)} · {r.cadence === 'monthly' ? '每月' : '每周'} · 下次到期 {r.next_run_date}
+                      {r.type === 'income' ? '收入' : '支出'} · {formatMoney(r.amount)} · {r.cadence === 'monthly' ? '每月' : '每周'} · 下次到期 {r.next_run_date}
                     </div>
                   </div>
 
