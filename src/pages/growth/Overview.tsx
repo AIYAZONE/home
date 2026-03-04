@@ -5,6 +5,7 @@ import { useProfile } from '@/hooks/useProfile';
 import { GrowthGoal, GrowthKeyResult } from '@/types';
 import { Loader2, Plus, Target, Trash2, Pencil, CheckCircle, Pause, XCircle, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatPercent } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -405,7 +406,7 @@ function GoalCard({
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">关键结果 ({keyResults.length})</span>
-              <span className="font-medium">{progress.toFixed(0)}%</span>
+              <span className="font-medium">{formatPercent(progress, 0)}</span>
             </div>
             {keyResults.length > 0 && (
               <div className="h-2 w-full rounded-full bg-muted/60">

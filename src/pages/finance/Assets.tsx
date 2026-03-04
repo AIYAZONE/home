@@ -5,8 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
+import { compareByLocale, formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useBalanceSheet } from '@/hooks/useBalanceSheet';
+import { AssetsGuideCard } from '@/components/finance/AssetsGuideCard';
 import type { BalanceSheetItem } from '@/types';
 
 const kindLabel: Record<BalanceSheetItem['kind'], string> = {
@@ -23,11 +25,6 @@ const defaultCategories = {
   asset: ['现金', '银行存款', '投资', '公积金', '保险现金价值', '房产', '车辆', '其他'],
   liability: ['信用卡', '房贷', '车贷', '消费贷', '其他'],
 } as const;
-
-function formatMoney(value: number) {
-  const n = Number.isFinite(value) ? value : 0;
-  return `¥${n.toFixed(2)}`;
-}
 
 export default function FinanceAssets() {
   const { items, fundAccounts, stats, isLoading, addItem, updateItem, deleteItem, isAdding, isUpdating, isDeleting } = useBalanceSheet();
@@ -55,7 +52,7 @@ export default function FinanceAssets() {
       list.sort((a, b) => b.amount - a.amount);
       groups.set(key, list);
     }
-    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0], 'zh-Hans-CN'));
+    return Array.from(groups.entries()).sort((a, b) => compareByLocale(a[0], b[0]));
   }, [activeItems]);
 
   const fundByKind = useMemo(() => {
@@ -129,6 +126,33 @@ export default function FinanceAssets() {
         <PageTitle>资产统计</PageTitle>
         <PageDescription>统计你录入的资产/负债，并汇总 3层基金余额，方便统一管理。</PageDescription>
       </PageHeader>
+
+      <AssetsGuideCard
+        itemsCount={(items ?? []).length}
+        stats={stats}
+        onPrefillBankDeposit={() => {
+          setEditingId(null);
+          setKind('asset');
+          setCategory('银行存款');
+          setName('银行卡/活期');
+          setAmount('');
+          setAsOfDate(new Date().toISOString().slice(0, 10));
+          setVisibility('family');
+          setNote('');
+          setIsActive(true);
+        }}
+        onPrefillMortgage={() => {
+          setEditingId(null);
+          setKind('liability');
+          setCategory('房贷');
+          setName('房贷');
+          setAmount('');
+          setAsOfDate(new Date().toISOString().slice(0, 10));
+          setVisibility('family');
+          setNote('');
+          setIsActive(true);
+        }}
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
         <Card>

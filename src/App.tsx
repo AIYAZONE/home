@@ -26,6 +26,8 @@ import RelationshipsOverview from '@/pages/relationships/Overview';
 import SettingsOverview from '@/pages/settings/Overview';
 import SettingsMembers from '@/pages/settings/Members';
 import SettingsAccount from '@/pages/settings/Account';
+import SettingsInvitations from '@/pages/settings/Invitations';
+import SettingsData from '@/pages/settings/Data';
 import { supabaseConfig } from '@/lib/supabase';
 import { ToastHost } from '@/components/ui/toast';
 
@@ -66,6 +68,8 @@ export default function App() {
                     <Route path="advisor" element={<AdvisorOverview />} />
                     <Route path="settings" element={<SettingsOverview />} />
                     <Route path="settings/members" element={<SettingsMembers />} />
+                    <Route path="settings/invitations" element={<SettingsInvitations />} />
+                    <Route path="settings/data" element={<SettingsData />} />
                     <Route path="settings/account" element={<SettingsAccount />} />
                   </Route>
                 </Route>

@@ -5,7 +5,8 @@ import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
 import { AllocationRule, Category, FundAccount, RecurringTransaction, Transaction } from '@/types';
 import { Link, useNavigate } from 'react-router-dom';
-import { BarChart3, Calendar, DollarSign, Loader2, Plus, TrendingDown, TrendingUp, X, Receipt, PiggyBank, Tags, Repeat, TrendingUp as FundIcon } from 'lucide-react';
+import { BarChart3, Calendar, DollarSign, Loader2, Plus, TrendingDown, TrendingUp, X, Receipt, PiggyBank, Repeat } from 'lucide-react';
+import { formatMoney, formatPercent } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,12 +17,10 @@ import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
 
 const quickLinks = [
-  { name: '资产统计', href: '/finance/assets', icon: BarChart3, description: '汇总资产/负债与基金余额' },
   { name: '交易记录', href: '/finance/transactions', icon: Receipt, description: '查看和管理所有交易' },
+  { name: '资产统计', href: '/finance/assets', icon: BarChart3, description: '汇总资产/负债与基金余额' },
   { name: '预算管理', href: '/finance/budgets', icon: PiggyBank, description: '设置和跟踪预算' },
-  { name: '分类管理', href: '/finance/categories', icon: Tags, description: '管理收支分类' },
   { name: '固定支出', href: '/finance/recurring', icon: Repeat, description: '管理周期性支出' },
-  { name: '3层基金', href: '/finance/funds', icon: FundIcon, description: '安全垫/目标/梦想' },
 ];
 
 export default function FinanceOverview() {
@@ -369,7 +368,7 @@ export default function FinanceOverview() {
             </div>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="text-2xl font-semibold tracking-tight">¥{balance.toFixed(2)}</div>
+            <div className="text-2xl font-semibold tracking-tight">{formatMoney(balance)}</div>
           </CardContent>
         </Card>
         <Card>
@@ -380,7 +379,7 @@ export default function FinanceOverview() {
             </div>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="text-2xl font-semibold tracking-tight text-emerald-600">+¥{monthIncome.toFixed(2)}</div>
+            <div className="text-2xl font-semibold tracking-tight text-emerald-600">{formatMoney(monthIncome, { signDisplay: 'always' })}</div>
           </CardContent>
         </Card>
         <Card>
@@ -391,12 +390,12 @@ export default function FinanceOverview() {
             </div>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="text-2xl font-semibold tracking-tight text-rose-600">-¥{monthExpense.toFixed(2)}</div>
+            <div className="text-2xl font-semibold tracking-tight text-rose-600">{formatMoney(-monthExpense, { signDisplay: 'always' })}</div>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {quickLinks.map((link) => {
           const Icon = link.icon;
           return (
@@ -473,7 +472,7 @@ export default function FinanceOverview() {
                   {latestTransaction ? (
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2">
                       <div className="text-xs text-muted-foreground">
-                        最近一笔：{latestTransaction.type === 'income' ? '+' : '-'}¥{latestTransaction.amount.toFixed(2)} · {latestTransaction.category}
+                        最近一笔：{formatMoney(latestTransaction.type === 'income' ? latestTransaction.amount : -latestTransaction.amount, { signDisplay: 'always' })} · {latestTransaction.category}
                       </div>
                       <Button
                         type="button"
@@ -649,7 +648,7 @@ export default function FinanceOverview() {
                     <div className="min-w-0">
                       <CardTitle>存钱计划分配</CardTitle>
                       <CardDescription className="truncate">
-                        本次收入 ¥{Number(allocationPrompt.transaction.amount).toFixed(2)}，将按规则分配到基金。
+                        本次收入 {formatMoney(allocationPrompt.transaction.amount)}，将按规则分配到基金。
                       </CardDescription>
                     </div>
                     <Button variant="ghost" size="sm" onClick={closeAllocationPrompt} aria-label="关闭" disabled={isApplyingAllocation}>
@@ -663,15 +662,15 @@ export default function FinanceOverview() {
                       <div key={item.fund.id} className="flex items-center justify-between rounded-xl border border-border/60 bg-background/40 px-3 py-2">
                         <div className="min-w-0">
                           <div className="truncate font-medium">{item.fund.name}</div>
-                          <div className="text-xs text-muted-foreground">{item.percentage.toFixed(2)}%</div>
+                          <div className="text-xs text-muted-foreground">{formatPercent(item.percentage, 2)}</div>
                         </div>
-                        <div className="font-semibold">¥{item.amount.toFixed(2)}</div>
+                        <div className="font-semibold">{formatMoney(item.amount)}</div>
                       </div>
                     ))}
                   </div>
 
                   {allocationPrompt.leftover > 0 ? (
-                    <div className="text-xs text-muted-foreground">剩余 ¥{allocationPrompt.leftover.toFixed(2)} 不会自动分配到基金。</div>
+                    <div className="text-xs text-muted-foreground">剩余 {formatMoney(allocationPrompt.leftover)} 不会自动分配到基金。</div>
                   ) : null}
 
                   <div className="flex justify-end gap-2">

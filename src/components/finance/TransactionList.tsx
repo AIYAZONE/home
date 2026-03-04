@@ -1,6 +1,7 @@
 import { Transaction } from '@/types';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import { formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -56,7 +57,7 @@ export default function TransactionList({ transactions, isLoading, onEdit, onDel
                         transaction.type === 'income' ? 'text-emerald-600' : 'text-foreground',
                       )}
                     >
-                      {transaction.type === 'income' ? '+' : '-'}¥{transaction.amount.toFixed(2)}
+                      {formatMoney(transaction.type === 'income' ? transaction.amount : -transaction.amount, { signDisplay: 'always' })}
                     </div>
                     {transaction.description ? (
                       <div className="text-xs text-muted-foreground">{transaction.description}</div>

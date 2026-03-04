@@ -15,21 +15,35 @@ import { useTheme } from '@/hooks/useTheme';
 import { Button } from '@/components/ui/button';
 import { navigation, mobileTabs, type NavNode } from '@/config/navigation';
 
-function getGroupKey(item: NavNode): string {
-  const overviewHref = item.children?.find((child) => child.name === '概览' && child.href)?.href;
-  return overviewHref ?? item.children?.find((child) => child.href)?.href ?? item.name;
+function isHeadingNode(node: NavNode): node is Extract<NavNode, { kind: 'heading' }> {
+  return node.kind === 'heading';
 }
 
-function isGroupActive(item: NavNode, pathname: string): boolean {
-  if (item.href === pathname) return true;
-  if (!item.children) return false;
-  return item.children.some((child) => child.href === pathname);
+function isGroupNode(node: NavNode): node is Extract<NavNode, { kind: 'group' }> {
+  return node.kind === 'group';
+}
+
+function isLinkNode(node: NavNode): node is Extract<NavNode, { href: string }> {
+  return 'href' in node;
+}
+
+function getGroupKey(item: Extract<NavNode, { kind: 'group' }>): string {
+  const overviewChild = item.children.find((child): child is Extract<NavNode, { href: string }> => isLinkNode(child) && child.name === '概览');
+  const firstChild = item.children.find((child): child is Extract<NavNode, { href: string }> => isLinkNode(child));
+  const overviewHref = overviewChild?.href;
+  const firstHref = firstChild?.href;
+  return overviewHref ?? firstHref ?? item.name;
+}
+
+function isGroupActive(item: Extract<NavNode, { kind: 'group' }>, pathname: string): boolean {
+  return item.children.some((child) => isLinkNode(child) && child.href === pathname);
 }
 
 function findActiveNode(items: NavNode[], pathname: string): NavNode | null {
   for (const item of items) {
-    if (item.href === pathname) return item;
-    if (item.children) {
+    if (isHeadingNode(item)) continue;
+    if (isLinkNode(item) && item.href === pathname) return item;
+    if (isGroupNode(item)) {
       const found = findActiveNode(item.children, pathname);
       if (found) return found;
     }
@@ -52,7 +66,7 @@ export default function MainLayout() {
     const saved = window.localStorage.getItem('ui.expandedMenus');
     return saved ? new Set(JSON.parse(saved)) : new Set(['/finance']);
   });
-  const [submenuPopup, setSubmenuPopup] = useState<{ item: NavNode; top: number; left: number } | null>(null);
+  const [submenuPopup, setSubmenuPopup] = useState<{ item: Extract<NavNode, { kind: 'group' }>; top: number; left: number } | null>(null);
   const tooltipAnchorRef = useRef<HTMLElement | null>(null);
   const [floatingTooltip, setFloatingTooltip] = useState<null | { label: string; top: number; left: number }>(null);
   const location = useLocation();
@@ -147,7 +161,7 @@ export default function MainLayout() {
     return () => window.removeEventListener('click', onClickOutside);
   }, [submenuPopup]);
 
-  const openSubmenuPopup = (el: HTMLElement, item: NavNode) => {
+  const openSubmenuPopup = (el: HTMLElement, item: Extract<NavNode, { kind: 'group' }>) => {
     const rect = el.getBoundingClientRect();
     setSubmenuPopup({
       item,
@@ -178,10 +192,20 @@ export default function MainLayout() {
             className="fixed z-[9999] min-w-[160px] rounded-2xl border border-border/60 bg-popover p-1.5 shadow-lg"
             style={{ top: submenuPopup.top, left: submenuPopup.left }}
           >
-            {submenuPopup.item.children?.map((child) => {
-              if (!child.href) return null;
+            {submenuPopup.item.children.map((child, index) => {
+              if (isHeadingNode(child)) {
+                return (
+                  <div
+                    key={`heading-${index}-${child.name}`}
+                    className="mt-1 px-3 py-1 text-[11px] font-semibold tracking-wide text-muted-foreground/70 first:mt-0"
+                  >
+                    {child.name}
+                  </div>
+                );
+              }
+              if (!isLinkNode(child)) return null;
               const isActive = location.pathname === child.href;
-              const Icon = child.icon!;
+              const Icon = child.icon;
               return (
                 <Link
                   key={child.href}
@@ -239,15 +263,17 @@ export default function MainLayout() {
           <nav className="flex-1 overflow-y-auto px-3 py-3">
             <div className={cn('space-y-1', sidebarCollapsed && 'pt-1')}>
               {navigation.map((item) => {
-                const hasChildren = Boolean(item.children && item.children.length > 0);
-                const groupKey = hasChildren ? getGroupKey(item) : (item.href ?? item.name);
-                const isExpanded = hasChildren ? expandedMenus.has(groupKey) : false;
-                const isActive = hasChildren
-                  ? isGroupActive(item, location.pathname)
-                  : item.href
+                if (isHeadingNode(item)) return null;
+                const groupItem = isGroupNode(item) ? item : null;
+                const hasChildren = Boolean(groupItem);
+                const groupKey = groupItem ? getGroupKey(groupItem) : (isLinkNode(item) ? item.href : item.name);
+                const isExpanded = groupItem ? expandedMenus.has(groupKey) : false;
+                const isActive = groupItem
+                  ? isGroupActive(groupItem, location.pathname)
+                  : isLinkNode(item)
                     ? location.pathname === item.href || location.pathname.startsWith(`${item.href}/`)
                     : false;
-                const Icon = item.icon!;
+                const Icon = item.icon;
 
                 if (sidebarCollapsed) {
                   return (
@@ -258,8 +284,8 @@ export default function MainLayout() {
                         onClick={(e) => {
                           if (hasChildren) {
                             closeFloatingTooltip();
-                            openSubmenuPopup(e.currentTarget, item);
-                          } else if (item.href) {
+                            openSubmenuPopup(e.currentTarget, groupItem!);
+                          } else if (isLinkNode(item)) {
                             navigate(item.href);
                           }
                         }}
@@ -281,7 +307,7 @@ export default function MainLayout() {
                   );
                 }
 
-                if (hasChildren) {
+                if (groupItem) {
                   const menuId = `sidebar-group-${toDomId(groupKey)}`;
                   return (
                     <div key={groupKey}>
@@ -312,10 +338,20 @@ export default function MainLayout() {
 
                       {isExpanded && (
                         <div id={menuId} className="mt-1 ml-4 space-y-0.5 border-l border-border/40 pl-4">
-                          {item.children!.map((child) => {
-                            if (!child.href) return null;
+                          {groupItem.children.map((child, index) => {
+                            if (isHeadingNode(child)) {
+                              return (
+                                <div
+                                  key={`heading-${index}-${child.name}`}
+                                  className="mt-2 px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground/70 first:mt-0"
+                                >
+                                  {child.name}
+                                </div>
+                              );
+                            }
+                            if (!isLinkNode(child)) return null;
                             const childIsActive = location.pathname === child.href;
-                            const ChildIcon = child.icon!;
+                            const ChildIcon = child.icon;
                             return (
                               <Link
                                 key={child.href}
@@ -336,7 +372,7 @@ export default function MainLayout() {
                   );
                 }
 
-                return item.href ? (
+                return isLinkNode(item) ? (
                   <Link
                     key={groupKey}
                     to={item.href}
@@ -414,15 +450,17 @@ export default function MainLayout() {
           <nav className="flex-1 overflow-y-auto px-3 pb-6 pt-2">
             <div className="space-y-1">
               {navigation.map((item) => {
-                const hasChildren = Boolean(item.children && item.children.length > 0);
-                const groupKey = hasChildren ? getGroupKey(item) : (item.href ?? item.name);
-                const isExpanded = hasChildren ? expandedMenus.has(groupKey) : false;
-                const isActive = hasChildren
-                  ? isGroupActive(item, location.pathname)
-                  : item.href
+                if (isHeadingNode(item)) return null;
+                const groupItem = isGroupNode(item) ? item : null;
+                const hasChildren = Boolean(groupItem);
+                const groupKey = groupItem ? getGroupKey(groupItem) : (isLinkNode(item) ? item.href : item.name);
+                const isExpanded = groupItem ? expandedMenus.has(groupKey) : false;
+                const isActive = groupItem
+                  ? isGroupActive(groupItem, location.pathname)
+                  : isLinkNode(item)
                     ? location.pathname === item.href || location.pathname.startsWith(`${item.href}/`)
                     : false;
-                const Icon = item.icon!;
+                const Icon = item.icon;
 
                 return (
                   <div key={groupKey}>
@@ -457,10 +495,20 @@ export default function MainLayout() {
                             id={`mobile-group-${toDomId(groupKey)}`}
                             className="mt-1 ml-4 space-y-0.5 border-l border-border/60 pl-4"
                           >
-                            {item.children!.map((child) => {
-                              if (!child.href) return null;
+                            {groupItem!.children.map((child, index) => {
+                              if (isHeadingNode(child)) {
+                                return (
+                                  <div
+                                    key={`heading-${index}-${child.name}`}
+                                    className="mt-2 px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground/70 first:mt-0"
+                                  >
+                                    {child.name}
+                                  </div>
+                                );
+                              }
+                              if (!isLinkNode(child)) return null;
                               const childIsActive = location.pathname === child.href;
-                              const ChildIcon = child.icon!;
+                              const ChildIcon = child.icon;
                               return (
                                 <Link
                                   key={child.href}
@@ -479,7 +527,7 @@ export default function MainLayout() {
                           </div>
                         )}
                       </>
-                    ) : item.href ? (
+                    ) : isLinkNode(item) ? (
                       <Link
                         to={item.href}
                         onClick={closeDrawer}

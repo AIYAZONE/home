@@ -6,6 +6,7 @@ import { TrendingDown, TrendingUp } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
 import { Budget, Transaction } from '@/types';
+import { formatMoney, formatPercent } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -149,12 +150,12 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { title: '总余额', value: `¥${totalBalance.toFixed(2)}`, trend: 0 },
-          { title: '本月收入', value: `+¥${monthIncome.toFixed(2)}`, trend: 0, tone: 'income' as const },
-          { title: '本月支出', value: `-¥${monthExpense.toFixed(2)}`, trend: 0, tone: 'expense' as const },
+          { title: '总余额', value: formatMoney(totalBalance), trend: 0 },
+          { title: '本月收入', value: formatMoney(monthIncome, { signDisplay: 'always' }), trend: 0, tone: 'income' as const },
+          { title: '本月支出', value: formatMoney(-monthExpense, { signDisplay: 'always' }), trend: 0, tone: 'expense' as const },
           {
             title: '预算执行率',
-            value: budgetStats.budgetTotal > 0 ? `${(budgetStats.ratio * 100).toFixed(0)}%` : '—',
+            value: budgetStats.budgetTotal > 0 ? formatPercent(budgetStats.ratio * 100, 0) : '—',
             trend: 0,
             tag: budgetStats.budgetTotal > 0 ? (budgetStats.ratio >= 1 ? '超支' : budgetStats.ratio >= 0.8 ? '紧张' : '良好') : '未设置',
             tagVariant:
@@ -228,7 +229,7 @@ export default function Dashboard() {
                         border: '1px solid hsl(var(--border))',
                         background: 'hsl(var(--card))',
                       }}
-                      formatter={(v: any, name: any) => [`¥${Number(v).toFixed(2)}`, name === 'income' ? '收入' : '支出']}
+                      formatter={(v: any, name: any) => [formatMoney(v), name === 'income' ? '收入' : '支出']}
                       labelFormatter={(label: any) => `日期 ${label}`}
                     />
                     <Legend formatter={(value: any) => (value === 'income' ? '收入' : '支出')} />
@@ -263,7 +264,7 @@ export default function Dashboard() {
                         border: '1px solid hsl(var(--border))',
                         background: 'hsl(var(--card))',
                       }}
-                      formatter={(v: any) => `¥${Number(v).toFixed(2)}`}
+                      formatter={(v: any) => formatMoney(v)}
                     />
                     <Legend />
                     <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} stroke="hsl(var(--border))">

@@ -1,4 +1,4 @@
-export type Locale = 'zh-CN';
+export type Locale = 'zh-CN' | 'en-US';
 
 export const DEFAULT_LOCALE: Locale = 'zh-CN';
 
@@ -21,6 +21,18 @@ export const zhCN = {
 export type MessageKey = keyof typeof zhCN;
 
 export function getDefaultLocale(): Locale {
+  if (typeof window === 'undefined') return DEFAULT_LOCALE;
+
+  try {
+    const stored = window.localStorage.getItem('locale');
+    if (stored === 'zh-CN' || stored === 'en-US') return stored;
+  } catch {
+    // ignore
+  }
+
+  const lang = window.navigator.language;
+  if (lang === 'zh-CN' || lang.startsWith('zh')) return 'zh-CN';
+  if (lang === 'en-US' || lang.startsWith('en')) return 'en-US';
   return DEFAULT_LOCALE;
 }
 

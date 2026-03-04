@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { compareByLocale, formatMoney, formatPercent } from '@/lib/format';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
 
@@ -71,7 +72,7 @@ export default function BudgetManager({ transactions, monthStart, monthStartKey 
     return (categories ?? [])
       .filter((c) => c.kind === 'expense' || c.kind === 'both')
       .slice()
-      .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+      .sort((a, b) => compareByLocale(a.name, b.name));
   }, [categories]);
 
   const budgetSummary = useMemo(() => {
@@ -135,7 +136,7 @@ export default function BudgetManager({ transactions, monthStart, monthStartKey 
             <CardDescription>为本月支出分类设置预算，并实时跟踪执行进度。</CardDescription>
           </div>
           <Badge variant={budgetSummary.ratio >= 1 ? 'danger' : budgetSummary.ratio >= 0.8 ? 'warning' : 'success'}>
-            {(budgetSummary.ratio * 100).toFixed(0)}%
+            {formatPercent(budgetSummary.ratio * 100, 0)}
           </Badge>
         </div>
       </CardHeader>
@@ -146,7 +147,7 @@ export default function BudgetManager({ transactions, monthStart, monthStartKey 
               <CardTitle className="text-sm font-medium text-muted-foreground">本月预算</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="text-lg font-semibold">¥{budgetSummary.totalBudget.toFixed(2)}</div>
+              <div className="text-lg font-semibold">{formatMoney(budgetSummary.totalBudget)}</div>
             </CardContent>
           </Card>
           <Card className="bg-card/60">
@@ -154,7 +155,7 @@ export default function BudgetManager({ transactions, monthStart, monthStartKey 
               <CardTitle className="text-sm font-medium text-muted-foreground">已花费（预算内分类）</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="text-lg font-semibold">¥{budgetSummary.totalSpent.toFixed(2)}</div>
+              <div className="text-lg font-semibold">{formatMoney(budgetSummary.totalSpent)}</div>
             </CardContent>
           </Card>
           <Card className="bg-card/60">
@@ -162,7 +163,7 @@ export default function BudgetManager({ transactions, monthStart, monthStartKey 
               <CardTitle className="text-sm font-medium text-muted-foreground">剩余</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="text-lg font-semibold">¥{Math.max(0, budgetSummary.totalBudget - budgetSummary.totalSpent).toFixed(2)}</div>
+              <div className="text-lg font-semibold">{formatMoney(Math.max(0, budgetSummary.totalBudget - budgetSummary.totalSpent))}</div>
             </CardContent>
           </Card>
         </div>
@@ -223,10 +224,10 @@ export default function BudgetManager({ transactions, monthStart, monthStartKey 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <div className="truncate text-sm font-medium">{b.category_name}</div>
-                        <Badge variant={badge as any}>{(ratio * 100).toFixed(0)}%</Badge>
+                        <Badge variant={badge as any}>{formatPercent(ratio * 100, 0)}</Badge>
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
-                        预算 ¥{Number(b.amount).toFixed(2)} · 已花费 ¥{spent.toFixed(2)} · 剩余 ¥{remaining.toFixed(2)}
+                        预算 {formatMoney(b.amount)} · 已花费 {formatMoney(spent)} · 剩余 {formatMoney(remaining)}
                       </div>
                       <div className="mt-3 h-2 w-full rounded-full bg-muted/60">
                         <div
