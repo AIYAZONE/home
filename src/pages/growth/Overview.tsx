@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
+import { useFamilyMembers } from '@/hooks/useFamilyMembers';
 import { GrowthGoal, GrowthKeyResult } from '@/types';
-import { Loader2, Plus, Target, Trash2, Pencil, CheckCircle, Pause, XCircle, ChevronDown } from 'lucide-react';
+import { Loader2, Plus, Target, Trash2, CheckCircle, Pause, XCircle, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatPercent } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -12,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
+import { Select } from '@/components/ui/select';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
 
@@ -33,25 +35,54 @@ const statusConfig: Record<string, { label: string; icon: typeof Target; color: 
 
 export default function GrowthOverview() {
   const { data: profile, isLoading: isProfileLoading } = useProfile();
+  const { members } = useFamilyMembers();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
   const [isAdding, setIsAdding] = useState(false);
   const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
+  const [subjectFilter, setSubjectFilter] = useState<'all' | string>('all');
 
   const [formTitle, setFormTitle] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [formCategory, setFormCategory] = useState<GrowthGoal['category']>('other');
   const [formTargetDate, setFormTargetDate] = useState('');
+  const [formSubjectUserId, setFormSubjectUserId] = useState<string>('');
+
+  const isParentLike = profile?.role === 'admin' || profile?.role === 'parent';
+
+  useEffect(() => {
+    if (!profile) return;
+    if (profile.role === 'child') {
+      setSubjectFilter(profile.id);
+      setFormSubjectUserId(profile.id);
+      return;
+    }
+    setSubjectFilter('all');
+    setFormSubjectUserId(profile.id);
+  }, [profile]);
+
+  useEffect(() => {
+    setExpandedGoal(null);
+  }, [subjectFilter]);
+
+  const memberNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    (members ?? []).forEach((m) => map.set(m.id, m.name || m.email || m.id.slice(0, 6)));
+    return map;
+  }, [members]);
 
   const { data: goals, isLoading: isGoalsLoading } = useQuery({
-    queryKey: ['growth_goals', profile?.family_id],
+    queryKey: ['growth_goals', profile?.family_id, subjectFilter],
     queryFn: async () => {
       if (!profile?.family_id) return [];
-      const { data, error } = await supabase
+      const q = supabase
         .from('growth_goals')
         .select('*')
-        .eq('family_id', profile.family_id)
-        .order('created_at', { ascending: false });
+        .eq('family_id', profile.family_id);
+      const { data, error } =
+        subjectFilter === 'all'
+          ? await q.order('created_at', { ascending: false })
+          : await q.eq('subject_user_id', subjectFilter).order('created_at', { ascending: false });
       if (error) throw error;
       return data as GrowthGoal[];
     },
@@ -74,11 +105,19 @@ export default function GrowthOverview() {
   });
 
   const createGoalMutation = useMutation({
-    mutationFn: async (payload: Omit<GrowthGoal, 'id' | 'created_at' | 'updated_at'>) => {
+    mutationFn: async (
+      payload: Omit<GrowthGoal, 'id' | 'created_at' | 'updated_at' | 'family_id' | 'owner_user_id'>,
+    ) => {
       if (!profile?.family_id) throw new Error('缺少家庭信息');
+      if (!payload.subject_user_id) throw new Error('请选择成员');
       const { data, error } = await supabase
         .from('growth_goals')
-        .insert({ ...payload, family_id: profile.family_id, owner_user_id: profile.id })
+        .insert({
+          ...payload,
+          family_id: profile.family_id,
+          owner_user_id: payload.subject_user_id,
+          created_by_user_id: profile.id,
+        })
         .select()
         .single();
       if (error) throw error;
@@ -129,11 +168,65 @@ export default function GrowthOverview() {
     },
   });
 
+  const createKeyResultMutation = useMutation({
+    mutationFn: async (payload: Omit<GrowthKeyResult, 'id' | 'created_at' | 'updated_at'>) => {
+      const { data, error } = await supabase
+        .from('growth_key_results')
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as GrowthKeyResult;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['growth_key_results'] });
+      pushToast({ variant: 'success', title: '已添加', message: '关键结果已添加。' });
+    },
+    onError: (err: any) => {
+      pushToast({ variant: 'danger', title: '添加失败', message: toUserMessage(err) });
+    },
+  });
+
+  const updateKeyResultMutation = useMutation({
+    mutationFn: async (payload: { id: string; patch: Partial<GrowthKeyResult> }) => {
+      const { data, error } = await supabase
+        .from('growth_key_results')
+        .update({ ...payload.patch, updated_at: new Date().toISOString() })
+        .eq('id', payload.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as GrowthKeyResult;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['growth_key_results'] });
+      pushToast({ variant: 'success', title: '已更新', message: '关键结果已更新。' });
+    },
+    onError: (err: any) => {
+      pushToast({ variant: 'danger', title: '更新失败', message: toUserMessage(err) });
+    },
+  });
+
+  const deleteKeyResultMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('growth_key_results').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['growth_key_results'] });
+      pushToast({ variant: 'success', title: '已删除', message: '关键结果已删除。' });
+    },
+    onError: (err: any) => {
+      pushToast({ variant: 'danger', title: '删除失败', message: toUserMessage(err) });
+    },
+  });
+
   const resetForm = () => {
     setFormTitle('');
     setFormDescription('');
     setFormCategory('other');
     setFormTargetDate('');
+    setFormSubjectUserId(profile?.id ?? '');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -145,7 +238,9 @@ export default function GrowthOverview() {
       status: 'active',
       priority: 0,
       target_date: formTargetDate || null,
-    } as any);
+      subject_user_id: formSubjectUserId || null,
+      created_by_user_id: profile?.id ?? null,
+    });
   };
 
   const activeGoals = (goals ?? []).filter((g) => g.status === 'active');
@@ -177,6 +272,18 @@ export default function GrowthOverview() {
           <PageDescription>设定目标、跟踪进度、持续成长。</PageDescription>
         </div>
         <PageActions>
+          {profile?.family_id && isParentLike ? (
+            <div className="w-44">
+              <Select value={subjectFilter} onChange={(e) => setSubjectFilter(e.target.value)}>
+                <option value="all">全家</option>
+                {(members ?? []).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name || m.email || m.id.slice(0, 6)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : null}
           <Button onClick={() => { resetForm(); setIsAdding(true); }}>
             <Plus className="h-4 w-4" />
             新目标
@@ -193,6 +300,21 @@ export default function GrowthOverview() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {isParentLike ? (
+                  <div className="space-y-1.5 md:col-span-2">
+                    <label className="text-sm font-medium text-foreground">成员</label>
+                    <Select
+                      value={formSubjectUserId}
+                      onChange={(e) => setFormSubjectUserId(e.target.value)}
+                    >
+                      {(members ?? []).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name || m.email || m.id.slice(0, 6)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                ) : null}
                 <div className="space-y-1.5 md:col-span-2">
                   <label className="text-sm font-medium text-foreground">目标标题</label>
                   <Input
@@ -277,6 +399,12 @@ export default function GrowthOverview() {
                     onStatusChange={(status) => updateStatusMutation.mutate({ id: goal.id, status })}
                     onDelete={() => deleteGoalMutation.mutate(goal.id)}
                     keyResults={keyResults ?? []}
+                    memberName={goal.subject_user_id ? memberNameById.get(goal.subject_user_id) : null}
+                    onCreateKeyResult={(payload) => createKeyResultMutation.mutate(payload)}
+                    onUpdateKeyResult={(payload) => updateKeyResultMutation.mutate(payload)}
+                    onDeleteKeyResult={(id) => deleteKeyResultMutation.mutate(id)}
+                    isSavingKeyResult={createKeyResultMutation.isPending || updateKeyResultMutation.isPending}
+                    isDeletingKeyResult={deleteKeyResultMutation.isPending}
                   />
                 ))}
               </div>
@@ -296,6 +424,12 @@ export default function GrowthOverview() {
                     onStatusChange={(status) => updateStatusMutation.mutate({ id: goal.id, status })}
                     onDelete={() => deleteGoalMutation.mutate(goal.id)}
                     keyResults={keyResults ?? []}
+                    memberName={goal.subject_user_id ? memberNameById.get(goal.subject_user_id) : null}
+                    onCreateKeyResult={(payload) => createKeyResultMutation.mutate(payload)}
+                    onUpdateKeyResult={(payload) => updateKeyResultMutation.mutate(payload)}
+                    onDeleteKeyResult={(id) => deleteKeyResultMutation.mutate(id)}
+                    isSavingKeyResult={createKeyResultMutation.isPending || updateKeyResultMutation.isPending}
+                    isDeletingKeyResult={deleteKeyResultMutation.isPending}
                   />
                 ))}
               </div>
@@ -315,6 +449,12 @@ export default function GrowthOverview() {
                     onStatusChange={(status) => updateStatusMutation.mutate({ id: goal.id, status })}
                     onDelete={() => deleteGoalMutation.mutate(goal.id)}
                     keyResults={keyResults ?? []}
+                    memberName={goal.subject_user_id ? memberNameById.get(goal.subject_user_id) : null}
+                    onCreateKeyResult={(payload) => createKeyResultMutation.mutate(payload)}
+                    onUpdateKeyResult={(payload) => updateKeyResultMutation.mutate(payload)}
+                    onDeleteKeyResult={(id) => deleteKeyResultMutation.mutate(id)}
+                    isSavingKeyResult={createKeyResultMutation.isPending || updateKeyResultMutation.isPending}
+                    isDeletingKeyResult={deleteKeyResultMutation.isPending}
                   />
                 ))}
               </div>
@@ -333,6 +473,12 @@ function GoalCard({
   onStatusChange,
   onDelete,
   keyResults,
+  memberName,
+  onCreateKeyResult,
+  onUpdateKeyResult,
+  onDeleteKeyResult,
+  isSavingKeyResult,
+  isDeletingKeyResult,
 }: {
   goal: GrowthGoal;
   isExpanded: boolean;
@@ -340,6 +486,12 @@ function GoalCard({
   onStatusChange: (status: GrowthGoal['status']) => void;
   onDelete: () => void;
   keyResults: GrowthKeyResult[];
+  memberName: string | null;
+  onCreateKeyResult: (payload: Omit<GrowthKeyResult, 'id' | 'created_at' | 'updated_at'>) => void;
+  onUpdateKeyResult: (payload: { id: string; patch: Partial<GrowthKeyResult> }) => void;
+  onDeleteKeyResult: (id: string) => void;
+  isSavingKeyResult: boolean;
+  isDeletingKeyResult: boolean;
 }) {
   const catCfg = categoryConfig[goal.category] || categoryConfig.other;
   const statusCfg = statusConfig[goal.status] || statusConfig.active;
@@ -348,6 +500,20 @@ function GoalCard({
   const progress = keyResults.length > 0
     ? keyResults.reduce((acc, kr) => acc + (kr.current_value / kr.target_value) * 100, 0) / keyResults.length
     : 0;
+
+  const [krTitle, setKrTitle] = useState('');
+  const [krTarget, setKrTarget] = useState('100');
+  const [krUnit, setKrUnit] = useState('');
+  const [krCurrentById, setKrCurrentById] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    const next: Record<string, string> = {};
+    keyResults.forEach((kr) => {
+      next[kr.id] = String(kr.current_value ?? 0);
+    });
+    setKrCurrentById(next);
+  }, [isExpanded, keyResults]);
 
   return (
     <Card className={cn('transition-colors', goal.status === 'completed' && 'opacity-70')}>
@@ -364,6 +530,7 @@ function GoalCard({
               <div className="flex items-center gap-2">
                 <CardTitle className="text-base">{goal.title}</CardTitle>
                 <Badge className={cn('text-xs', catCfg.color)}>{catCfg.label}</Badge>
+                {memberName ? <Badge variant="default" className="text-xs">{memberName}</Badge> : null}
               </div>
               {goal.description && (
                 <CardDescription className="mt-1">{goal.description}</CardDescription>
@@ -432,6 +599,37 @@ function GoalCard({
                           {kr.current_value}/{kr.target_value}{kr.unit || ''}
                         </span>
                       </div>
+                      <div className="mt-3 flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={krCurrentById[kr.id] ?? String(kr.current_value ?? 0)}
+                          onChange={(e) => setKrCurrentById((s) => ({ ...s, [kr.id]: e.target.value }))}
+                          className="h-9"
+                        />
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={isSavingKeyResult}
+                          onClick={() => {
+                            const v = Number(krCurrentById[kr.id] ?? kr.current_value ?? 0);
+                            onUpdateKeyResult({ id: kr.id, patch: { current_value: Number.isFinite(v) ? v : 0 } });
+                          }}
+                        >
+                          保存
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={isDeletingKeyResult}
+                          onClick={() => {
+                            const ok = window.confirm(`确认删除关键结果「${kr.title}」吗？`);
+                            if (!ok) return;
+                            onDeleteKeyResult(kr.id);
+                          }}
+                        >
+                          删除
+                        </Button>
+                      </div>
                       <div className="mt-2 h-1.5 w-full rounded-full bg-muted/60">
                         <div
                           className={cn('h-1.5 rounded-full', krProgress >= 100 ? 'bg-emerald-500' : 'bg-blue-500')}
@@ -443,6 +641,52 @@ function GoalCard({
                 })}
               </div>
             )}
+
+            <div className="rounded-xl border border-border p-3">
+              <div className="text-sm font-medium">新增关键结果</div>
+              <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+                <Input
+                  value={krTitle}
+                  onChange={(e) => setKrTitle(e.target.value)}
+                  placeholder="例如：每天背单词 30 分钟"
+                  className="h-9 md:col-span-3"
+                />
+                <Input
+                  type="number"
+                  value={krTarget}
+                  onChange={(e) => setKrTarget(e.target.value)}
+                  placeholder="目标值"
+                  className="h-9"
+                />
+                <Input
+                  value={krUnit}
+                  onChange={(e) => setKrUnit(e.target.value)}
+                  placeholder="单位（可选）"
+                  className="h-9"
+                />
+                <Button
+                  size="sm"
+                  disabled={isSavingKeyResult}
+                  onClick={() => {
+                    const title = krTitle.trim();
+                    if (!title) return;
+                    const target = Number(krTarget || '100');
+                    onCreateKeyResult({
+                      goal_id: goal.id,
+                      title,
+                      target_value: Number.isFinite(target) && target > 0 ? target : 100,
+                      current_value: 0,
+                      unit: krUnit.trim() || null,
+                    });
+                    setKrTitle('');
+                    setKrTarget('100');
+                    setKrUnit('');
+                  }}
+                >
+                  添加
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       )}
