@@ -18,6 +18,9 @@ export default {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        surface: "hsl(var(--surface))",
+        "surface-2": "hsl(var(--surface-2))",
+        "surface-3": "hsl(var(--surface-3))",
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
@@ -51,6 +54,10 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      boxShadow: {
+        elevated: "0 1px 0 0 hsl(var(--border) / 0.7), 0 20px 50px -30px hsl(var(--foreground) / 0.35)",
+        glow: "0 0 0 1px hsl(var(--ring) / 0.2), 0 12px 45px -20px hsl(var(--ring) / 0.45)",
       },
       keyframes: {
         "accordion-down": {

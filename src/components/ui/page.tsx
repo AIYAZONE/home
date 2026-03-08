@@ -9,7 +9,12 @@ export function PageHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
 }
 
 export function PageTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h1 className={cn('text-xl font-semibold text-foreground sm:text-2xl', className)} {...props} />;
+  return (
+    <h1
+      className={cn('text-[22px] font-semibold leading-tight tracking-tight text-foreground sm:text-3xl', className)}
+      {...props}
+    />
+  );
 }
 
 export function PageDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
@@ -17,5 +22,5 @@ export function PageDescription({ className, ...props }: React.HTMLAttributes<HT
 }
 
 export function PageActions({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex items-center gap-2', className)} {...props} />;
+  return <div className={cn('flex flex-col gap-2 sm:flex-row sm:items-center', className)} {...props} />;
 }

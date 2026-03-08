@@ -87,8 +87,8 @@ export default function Login() {
         <div className="w-full max-w-md">
           <Card className="bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
             <CardHeader className="text-center">
-              <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-primary/15 text-primary font-semibold">
-                FI
+              <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-primary/15 text-primary">
+                <img src="/brand-mark.svg" alt="Family Inc. OS" className="h-7 w-7" />
               </div>
               <CardTitle className="text-xl sm:text-2xl">Family Inc. OS</CardTitle>
               <CardDescription>像经营公司一样经营家庭</CardDescription>

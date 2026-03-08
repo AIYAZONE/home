@@ -4,7 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { ListRow, ListRowLeading, ListRowTrailing } from '@/components/ui/list-row';
 import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
+import { Select } from '@/components/ui/select';
 import { compareByLocale, formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useBalanceSheet } from '@/hooks/useBalanceSheet';
@@ -207,8 +209,7 @@ export default function FinanceAssets() {
             <form className="grid grid-cols-1 gap-3 md:grid-cols-6" onSubmit={onSubmit}>
               <div className="space-y-1.5 md:col-span-2">
                 <label className="text-sm font-medium">类型</label>
-                <select
-                  className={cn('h-10 w-full rounded-md border border-input bg-background px-3 text-sm')}
+                <Select
                   value={kind}
                   onChange={(e) => {
                     const nextKind = e.target.value as BalanceSheetItem['kind'];
@@ -218,7 +219,7 @@ export default function FinanceAssets() {
                 >
                   <option value="asset">资产</option>
                   <option value="liability">负债</option>
-                </select>
+                </Select>
               </div>
 
               <div className="space-y-1.5 md:col-span-4">
@@ -236,7 +237,7 @@ export default function FinanceAssets() {
 
               <div className="space-y-1.5 md:col-span-3">
                 <label className="text-sm font-medium">金额</label>
-                <Input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+                <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" inputMode="decimal" />
               </div>
 
               <div className="space-y-1.5 md:col-span-3">
@@ -246,14 +247,13 @@ export default function FinanceAssets() {
 
               <div className="space-y-1.5 md:col-span-3">
                 <label className="text-sm font-medium">可见性</label>
-                <select
-                  className={cn('h-10 w-full rounded-md border border-input bg-background px-3 text-sm')}
+                <Select
                   value={visibility}
                   onChange={(e) => setVisibility(e.target.value as BalanceSheetItem['visibility'])}
                 >
                   <option value="family">家庭可见</option>
                   <option value="private">仅自己</option>
-                </select>
+                </Select>
               </div>
 
               <div className="space-y-1.5 md:col-span-6">
@@ -309,14 +309,17 @@ export default function FinanceAssets() {
                           </div>
                           <div className="mt-3 space-y-2">
                             {list.map((item) => (
-                              <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
-                                <div className="min-w-0">
+                              <ListRow key={item.id} className="rounded-2xl border border-border px-3 py-2">
+                                <ListRowLeading className="items-start">
+                                  <div className="min-w-0">
                                   <div className="truncate text-sm">{item.name}</div>
                                   <div className="mt-0.5 text-xs text-muted-foreground">
                                     {visibilityLabel[item.visibility]} · {item.as_of_date}{item.note ? ` · ${item.note}` : ''}
                                   </div>
-                                </div>
-                                <div className="flex items-center gap-2">
+                                  </div>
+                                </ListRowLeading>
+                                <ListRowTrailing className="sm:justify-end">
+                                  <div className="flex items-center gap-2 sm:justify-end">
                                   <div className={cn('text-sm font-semibold', item.kind === 'liability' ? 'text-amber-600' : 'text-emerald-600')}>
                                     {formatMoney(Number(item.amount))}
                                   </div>
@@ -331,8 +334,9 @@ export default function FinanceAssets() {
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
-                                </div>
-                              </div>
+                                  </div>
+                                </ListRowTrailing>
+                              </ListRow>
                             ))}
                           </div>
                         </div>
