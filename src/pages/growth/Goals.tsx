@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
+import { useFamilyMembers } from '@/hooks/useFamilyMembers';
 import { GrowthGoal, GrowthKeyResult } from '@/types';
 import { Loader2, Plus, Target, Trash2, CheckCircle, Pause, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -10,30 +11,60 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
+import { Select } from '@/components/ui/select';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
 
 export default function GrowthGoals() {
   const { data: profile } = useProfile();
+  const { members } = useFamilyMembers();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
   const [isAdding, setIsAdding] = useState(false);
   const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
+  const [subjectFilter, setSubjectFilter] = useState<'all' | string>('all');
 
   const [formTitle, setFormTitle] = useState('');
   const [formCategory, setFormCategory] = useState<GrowthGoal['category']>('other');
   const [formTargetDate, setFormTargetDate] = useState('');
   const [formDescription, setFormDescription] = useState('');
+  const [formSubjectUserId, setFormSubjectUserId] = useState<string>('');
+
+  const isParentLike = profile?.role === 'admin' || profile?.role === 'parent';
+
+  useEffect(() => {
+    if (!profile) return;
+    if (profile.role === 'child') {
+      setSubjectFilter(profile.id);
+      setFormSubjectUserId(profile.id);
+      return;
+    }
+    setSubjectFilter('all');
+    setFormSubjectUserId(profile.id);
+  }, [profile]);
+
+  useEffect(() => {
+    setExpandedGoal(null);
+  }, [subjectFilter]);
+
+  const memberNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    (members ?? []).forEach((m) => map.set(m.id, m.name || m.email || m.id.slice(0, 6)));
+    return map;
+  }, [members]);
 
   const { data: goals, isLoading } = useQuery({
-    queryKey: ['growth_goals', profile?.family_id],
+    queryKey: ['growth_goals', profile?.family_id, subjectFilter],
     queryFn: async () => {
       if (!profile?.family_id) return [];
-      const { data, error } = await supabase
+      const q = supabase
         .from('growth_goals')
         .select('*')
-        .eq('family_id', profile.family_id)
-        .order('created_at', { ascending: false });
+        .eq('family_id', profile.family_id);
+      const { data, error } =
+        subjectFilter === 'all'
+          ? await q.order('created_at', { ascending: false })
+          : await q.eq('subject_user_id', subjectFilter).order('created_at', { ascending: false });
       if (error) throw error;
       return data as GrowthGoal[];
     },
@@ -56,11 +87,19 @@ export default function GrowthGoals() {
   });
 
   const createGoalMutation = useMutation({
-    mutationFn: async (payload: Omit<GrowthGoal, 'id' | 'created_at' | 'updated_at'>) => {
+    mutationFn: async (
+      payload: Omit<GrowthGoal, 'id' | 'created_at' | 'updated_at' | 'family_id' | 'owner_user_id'>,
+    ) => {
       if (!profile?.family_id) throw new Error('缺少家庭信息');
+      if (!payload.subject_user_id) throw new Error('请选择成员');
       const { data, error } = await supabase
         .from('growth_goals')
-        .insert({ ...payload, family_id: profile.family_id, owner_user_id: profile.id })
+        .insert({
+          ...payload,
+          family_id: profile.family_id,
+          owner_user_id: payload.subject_user_id,
+          created_by_user_id: profile.id,
+        })
         .select()
         .single();
       if (error) throw error;
@@ -72,6 +111,7 @@ export default function GrowthGoals() {
       setFormCategory('other');
       setFormTargetDate('');
       setFormDescription('');
+      setFormSubjectUserId(profile?.id ?? '');
       setIsAdding(false);
       pushToast({ variant: 'success', title: '已创建', message: '目标已创建。' });
     },
@@ -120,7 +160,9 @@ export default function GrowthGoals() {
       status: 'active',
       priority: 0,
       target_date: formTargetDate || null,
-    } as any);
+      subject_user_id: formSubjectUserId || null,
+      created_by_user_id: profile?.id ?? null,
+    });
   };
 
   const activeGoals = (goals ?? []).filter((g) => g.status === 'active');
@@ -129,8 +171,24 @@ export default function GrowthGoals() {
   return (
     <Page>
       <PageHeader>
-        <PageTitle>目标列表</PageTitle>
-        <PageDescription>设定目标、跟踪进度、持续成长。</PageDescription>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <PageTitle>目标列表</PageTitle>
+            <PageDescription>设定目标、跟踪进度、持续成长。</PageDescription>
+          </div>
+          {profile?.family_id && isParentLike ? (
+            <div className="w-44">
+              <Select value={subjectFilter} onChange={(e) => setSubjectFilter(e.target.value)}>
+                <option value="all">全家</option>
+                {(members ?? []).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name || m.email || m.id.slice(0, 6)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : null}
+        </div>
       </PageHeader>
 
       {isAdding && (
@@ -138,6 +196,18 @@ export default function GrowthGoals() {
           <CardContent className="pt-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {isParentLike ? (
+                  <div className="space-y-1.5 md:col-span-2">
+                    <label className="text-sm font-medium">成员</label>
+                    <Select value={formSubjectUserId} onChange={(e) => setFormSubjectUserId(e.target.value)}>
+                      {(members ?? []).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name || m.email || m.id.slice(0, 6)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                ) : null}
                 <div className="space-y-1.5 md:col-span-2">
                   <label className="text-sm font-medium">目标标题</label>
                   <Input
@@ -215,7 +285,14 @@ export default function GrowthGoals() {
                     <CardContent className="py-4">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
-                          <div className="font-medium">{goal.title}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium">{goal.title}</div>
+                            {goal.subject_user_id ? (
+                              <Badge variant="default" className="text-xs">
+                                {memberNameById.get(goal.subject_user_id) || goal.subject_user_id.slice(0, 6)}
+                              </Badge>
+                            ) : null}
+                          </div>
                           {goal.description && <div className="text-sm text-muted-foreground mt-1">{goal.description}</div>}
                         </div>
                         <div className="flex items-center gap-1">

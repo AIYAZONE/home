@@ -126,6 +126,8 @@ export interface GrowthGoal {
   id: string;
   family_id: string;
   owner_user_id: string | null;
+  subject_user_id: string | null;
+  created_by_user_id: string | null;
   title: string;
   description: string | null;
   category: 'education' | 'career' | 'skill' | 'health' | 'finance' | 'other';
@@ -143,6 +145,91 @@ export interface GrowthKeyResult {
   target_value: number;
   current_value: number;
   unit: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HealthProfile {
+  id: string;
+  family_id: string;
+  subject_user_id: string;
+  created_by_user_id: string | null;
+  display_name: string | null;
+  birth_date: string | null;
+  height_cm: number | null;
+  allergies: string | null;
+  conditions: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HealthMetric {
+  id: string;
+  family_id: string;
+  subject_user_id: string;
+  metric_key: 'weight_kg' | 'sleep_hours' | 'steps';
+  value: number;
+  unit: string | null;
+  recorded_at: string;
+  note: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InsurancePolicy {
+  id: string;
+  family_id: string;
+  subject_user_id: string;
+  kind: 'health' | 'life' | 'accident' | 'critical_illness' | 'dental' | 'other';
+  provider: string | null;
+  product_name: string | null;
+  coverage_amount: number | null;
+  premium_amount: number | null;
+  premium_cadence: 'monthly' | 'yearly' | 'one_time' | null;
+  start_date: string | null;
+  end_date: string | null;
+  note: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RelationshipEvent {
+  id: string;
+  family_id: string;
+  title: string;
+  occurred_at: string;
+  participant_user_ids: string[];
+  notes: string | null;
+  action_items: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExternalContact {
+  id: string;
+  family_id: string;
+  owner_user_id: string;
+  visibility: 'family' | 'private';
+  name: string;
+  relation: string | null;
+  tags: string[];
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContactInteraction {
+  id: string;
+  family_id: string;
+  contact_id: string;
+  interaction_date: string;
+  summary: string | null;
+  next_follow_up_date: string | null;
+  created_by_user_id: string | null;
   created_at: string;
   updated_at: string;
 }
