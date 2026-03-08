@@ -177,7 +177,7 @@ export default function Dashboard() {
                 <div className="flex items-end justify-between gap-3">
                   <div
                     className={cn(
-                      'text-2xl font-semibold tracking-tight',
+                      'min-w-0 flex-1 truncate text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl',
                       stat.tone === 'income' && 'text-emerald-600',
                       stat.tone === 'expense' && 'text-rose-600',
                     )}
@@ -187,7 +187,7 @@ export default function Dashboard() {
                   {stat.tag ? null : (
                     <div
                       className={cn(
-                        'inline-flex items-center gap-1 text-sm font-medium',
+                        'inline-flex shrink-0 items-center gap-1 text-sm font-medium',
                         positive && 'text-emerald-600',
                         negative && 'text-rose-600',
                         !positive && !negative && 'text-muted-foreground',

@@ -30,6 +30,8 @@ import SettingsInvitations from '@/pages/settings/Invitations';
 import SettingsData from '@/pages/settings/Data';
 import { supabaseConfig } from '@/lib/supabase';
 import { ToastHost } from '@/components/ui/toast';
+import PwaNetworkToasts from '@/components/PwaNetworkToasts';
+import PwaStatusBanner from '@/components/PwaStatusBanner';
 
 const queryClient = new QueryClient();
 
@@ -78,7 +80,9 @@ export default function App() {
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </Router>
+          <PwaNetworkToasts />
           <ToastHost />
+          <PwaStatusBanner />
         </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>

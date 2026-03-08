@@ -36,13 +36,13 @@ function getGroupKey(item: Extract<NavNode, { kind: 'group' }>): string {
 }
 
 function isGroupActive(item: Extract<NavNode, { kind: 'group' }>, pathname: string): boolean {
-  return item.children.some((child) => isLinkNode(child) && child.href === pathname);
+  return item.children.some((child) => isLinkNode(child) && (child.href === pathname || pathname.startsWith(`${child.href}/`)));
 }
 
 function findActiveNode(items: NavNode[], pathname: string): NavNode | null {
   for (const item of items) {
     if (isHeadingNode(item)) continue;
-    if (isLinkNode(item) && item.href === pathname) return item;
+    if (isLinkNode(item) && (item.href === pathname || pathname.startsWith(`${item.href}/`))) return item;
     if (isGroupNode(item)) {
       const found = findActiveNode(item.children, pathname);
       if (found) return found;
@@ -171,7 +171,7 @@ export default function MainLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background dark:bg-[radial-gradient(60%_35%_at_50%_-10%,hsl(var(--ring)/0.18),transparent_60%)]">
       {sidebarCollapsed &&
         floatingTooltip &&
         createPortal(
@@ -204,7 +204,7 @@ export default function MainLayout() {
                 );
               }
               if (!isLinkNode(child)) return null;
-              const isActive = location.pathname === child.href;
+              const isActive = location.pathname === child.href || location.pathname.startsWith(`${child.href}/`);
               const Icon = child.icon;
               return (
                 <Link
@@ -233,7 +233,7 @@ export default function MainLayout() {
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 border-r border-border/60 bg-card transform transition-all duration-300 ease-out lg:translate-x-0 hidden lg:block',
+          'fixed inset-y-0 left-0 z-50 border-r border-border/60 bg-surface transform transition-all duration-300 ease-out lg:translate-x-0 hidden lg:block',
           sidebarCollapsed ? 'w-20' : 'w-72',
           drawerOpen ? 'translate-x-0 block' : '',
         )}
@@ -245,8 +245,8 @@ export default function MainLayout() {
               to="/dashboard"
               className={cn('flex items-center overflow-hidden', sidebarCollapsed ? 'justify-center' : 'gap-2')}
             >
-              <div className="h-10 w-10 shrink-0 rounded-2xl border border-primary/15 bg-primary/10 text-primary grid place-items-center text-sm font-semibold">
-                FI
+              <div className="h-10 w-10 shrink-0 rounded-2xl border border-primary/15 bg-primary/10 text-primary grid place-items-center">
+                <img src="/brand-mark.svg" alt="Family Inc. OS" className="h-6 w-6" />
               </div>
               <div
                 className={cn(
@@ -350,7 +350,7 @@ export default function MainLayout() {
                               );
                             }
                             if (!isLinkNode(child)) return null;
-                            const childIsActive = location.pathname === child.href;
+                            const childIsActive = location.pathname === child.href || location.pathname.startsWith(`${child.href}/`);
                             const ChildIcon = child.icon;
                             return (
                               <Link
@@ -426,7 +426,7 @@ export default function MainLayout() {
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-72 border-r border-border/60 bg-card transform transition-transform duration-200 ease-out lg:hidden',
+          'fixed inset-y-0 left-0 z-50 w-72 border-r border-border/60 bg-surface transform transition-transform duration-200 ease-out lg:hidden',
           drawerOpen ? 'translate-x-0' : '-translate-x-full',
         )}
         aria-label="Mobile Sidebar"
@@ -434,15 +434,19 @@ export default function MainLayout() {
         <div className="flex h-full flex-col">
           <div className="flex h-16 items-center justify-between px-5">
             <Link to="/dashboard" className="flex items-center gap-2" onClick={closeDrawer}>
-              <div className="h-9 w-9 rounded-xl bg-primary/15 text-primary grid place-items-center text-sm font-semibold">
-                FI
+              <div className="h-9 w-9 rounded-xl bg-primary/15 text-primary grid place-items-center">
+                <img src="/brand-mark.svg" alt="Family Inc. OS" className="h-5 w-5" />
               </div>
               <div className="leading-tight">
                 <div className="text-sm font-semibold text-foreground">Family Inc. OS</div>
                 <div className="text-xs text-muted-foreground">家庭经营系统</div>
               </div>
             </Link>
-            <button onClick={closeDrawer} aria-label="Close menu">
+            <button
+              onClick={closeDrawer}
+              aria-label="Close menu"
+              className="rounded-2xl p-2 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
               <X className="h-6 w-6 text-muted-foreground" />
             </button>
           </div>
@@ -507,7 +511,7 @@ export default function MainLayout() {
                                 );
                               }
                               if (!isLinkNode(child)) return null;
-                              const childIsActive = location.pathname === child.href;
+                              const childIsActive = location.pathname === child.href || location.pathname.startsWith(`${child.href}/`);
                               const ChildIcon = child.icon;
                               return (
                                 <Link
@@ -549,15 +553,19 @@ export default function MainLayout() {
       </aside>
 
       <div className={cn('transition-all duration-300', sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72')}>
-        <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <header className="sticky top-0 z-30 border-b border-border/70 bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/50">
           <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 lg:px-8">
-            <button className="lg:hidden" onClick={() => setDrawerOpen(true)} aria-label="Open menu">
+            <button
+              className="rounded-2xl p-2 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden"
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Open menu"
+            >
               <Menu className="h-6 w-6 text-foreground" />
             </button>
 
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold text-foreground">{current?.name}</div>
-              <div className="truncate text-xs text-muted-foreground">简单易用 · 响应式 · 协作</div>
+              <div className="hidden truncate text-xs text-muted-foreground sm:block">简单易用 · 响应式 · 协作</div>
             </div>
 
             <Button variant="ghost" size="sm" onClick={toggleTheme} aria-label="Toggle theme">
@@ -566,12 +574,12 @@ export default function MainLayout() {
           </div>
         </header>
 
-        <main className="mx-auto max-w-7xl px-4 pb-24 pt-6 lg:px-8 lg:pb-10">
+        <main className="mx-auto max-w-7xl px-4 pb-28 pt-5 lg:px-8 lg:pb-10 lg:pt-6">
           <Outlet />
         </main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/90 backdrop-blur lg:hidden">
-          <div className="mx-auto grid max-w-7xl grid-cols-4 px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:hidden">
+          <div className="mx-auto grid max-w-7xl grid-cols-4 gap-2 px-3 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
             {mobileTabs.map((item) => {
               const isActive = location.pathname.startsWith(item.href);
               const Icon = item.icon;
@@ -580,9 +588,12 @@ export default function MainLayout() {
                   key={item.href}
                   to={item.href}
                   className={cn(
-                    'flex flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium transition-colors',
-                    isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+                    'flex h-12 flex-col items-center justify-center gap-1 rounded-2xl px-2 text-[11px] font-medium transition-colors',
+                    isActive
+                      ? 'bg-surface-2 text-foreground shadow-elevated'
+                      : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground',
                   )}
+                  aria-current={isActive ? 'page' : undefined}
                 >
                   <Icon className="h-5 w-5" />
                   {item.name}

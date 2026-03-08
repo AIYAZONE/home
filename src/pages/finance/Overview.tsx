@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -8,7 +8,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { BarChart3, Calendar, DollarSign, Loader2, Plus, TrendingDown, TrendingUp, X, Receipt, PiggyBank, Repeat } from 'lucide-react';
 import { formatMoney, formatPercent } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -47,7 +46,7 @@ export default function FinanceOverview() {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   }, []);
 
-  const { data: transactions, isLoading: isTransactionsLoading } = useQuery({
+  const { data: transactions } = useQuery({
     queryKey: ['transactions', profile?.family_id],
     queryFn: async () => {
       if (!profile?.family_id) return [];
@@ -90,7 +89,7 @@ export default function FinanceOverview() {
       queryClient.invalidateQueries({ queryKey: ['recurring_transactions'] });
       pushToast({ variant: 'success', title: '已设置固定项', message: '到期后会提示你确认生成交易。' });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       pushToast({ variant: 'danger', title: '固定项保存失败', message: toUserMessage(err) });
     },
   });
@@ -121,11 +120,35 @@ export default function FinanceOverview() {
       pushToast({ variant: 'success', title: '已保存', message: '交易已添加。' });
       await maybeOpenAllocationPrompt(created);
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       pendingRecurringRef.current = null;
       pushToast({ variant: 'danger', title: '保存失败', message: toUserMessage(err) });
     },
   });
+
+  const closeEditor = useCallback(() => {
+    setIsAdding(false);
+    setRecurringActive(false);
+  }, []);
+
+  const closeAllocationPrompt = useCallback(() => {
+    if (isApplyingAllocation) return;
+    setAllocationPrompt(null);
+  }, [isApplyingAllocation]);
+
+  useEffect(() => {
+    if (!allocationPrompt) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeAllocationPrompt();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [allocationPrompt, closeAllocationPrompt]);
 
   const latestTransaction = useMemo(() => {
     const all = transactions ?? [];
@@ -209,30 +232,6 @@ export default function FinanceOverview() {
     .reduce((acc, curr) => acc + curr.amount, 0) || 0;
 
   const balance = monthIncome - monthExpense;
-
-  const closeEditor = () => {
-    setIsAdding(false);
-    setRecurringActive(false);
-  };
-
-  const closeAllocationPrompt = () => {
-    if (isApplyingAllocation) return;
-    setAllocationPrompt(null);
-  };
-
-  useEffect(() => {
-    if (!allocationPrompt) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeAllocationPrompt();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [allocationPrompt, isApplyingAllocation]);
 
   const maybeOpenAllocationPrompt = async (created: Transaction) => {
     if (created.type !== 'income') return;
@@ -443,7 +442,7 @@ export default function FinanceOverview() {
                       const nextRun = new Date(`${date}T12:00:00`);
                       nextRun.setHours(0, 0, 0, 0);
                       pendingRecurringRef.current = {
-                        family_id: profile.family_id!,
+                        family_id: profile.family_id,
                         owner_user_id: profile.id,
                         visibility,
                         amount: parseFloat(amount),
@@ -465,7 +464,7 @@ export default function FinanceOverview() {
                       type,
                       date: new Date(`${date}T12:00:00`).toISOString(),
                       owner_user_id: profile.id,
-                    } as any);
+                    });
                   }}
                   className="space-y-4"
                 >
@@ -508,7 +507,7 @@ export default function FinanceOverview() {
                       <label className="text-sm font-medium text-foreground">可见范围</label>
                       <select
                         value={visibility}
-                        onChange={(e) => setVisibility(e.target.value as any)}
+                          onChange={(e) => setVisibility(e.target.value === 'private' ? 'private' : 'family')}
                         className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
                       >
                         <option value="family">家庭可见</option>
@@ -605,7 +604,7 @@ export default function FinanceOverview() {
                           <>
                             <select
                               value={recurringCadence}
-                              onChange={(e) => setRecurringCadence(e.target.value as any)}
+                              onChange={(e) => setRecurringCadence(e.target.value === 'weekly' ? 'weekly' : 'monthly')}
                               className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
                             >
                               <option value="monthly">每月</option>

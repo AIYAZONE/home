@@ -63,12 +63,16 @@ export default function SettingsAccount() {
             <div className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3">
               <div className="text-xs text-muted-foreground">昵称</div>
               {isEditingName ? (
-                <div className="mt-2 flex gap-2">
-                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="输入昵称" className="flex-1" />
-                  <Button size="sm" onClick={handleSaveName} disabled={isSaving}>
-                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : '保存'}
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => { setName(profile?.name ?? ''); setIsEditingName(false); }}>取消</Button>
+                <div className="mt-2 space-y-2">
+                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="输入昵称" />
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+                    <Button size="sm" variant="secondary" onClick={() => { setName(profile?.name ?? ''); setIsEditingName(false); }} className="w-full sm:w-auto">
+                      取消
+                    </Button>
+                    <Button size="sm" onClick={handleSaveName} disabled={isSaving} className="w-full sm:w-auto">
+                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : '保存'}
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="mt-1 flex items-center justify-between">

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ListRow, ListRowLeading, ListRowTrailing } from '@/components/ui/list-row';
 import { Pencil, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 
 interface TransactionListProps {
@@ -31,8 +32,8 @@ export default function TransactionList({ transactions, isLoading, onEdit, onDel
         ) : (
           <div className="divide-y divide-border rounded-xl border border-border">
             {transactions.map((transaction) => (
-              <div key={transaction.id} className="flex items-center justify-between gap-4 px-4 py-4 hover:bg-accent/40">
-                <div className="flex min-w-0 items-center gap-3">
+              <ListRow key={transaction.id}>
+                <ListRowLeading>
                   <div
                     className={cn(
                       'grid h-9 w-9 place-items-center rounded-xl',
@@ -48,9 +49,9 @@ export default function TransactionList({ transactions, isLoading, onEdit, onDel
                     </div>
                     <div className="truncate text-xs text-muted-foreground">{format(new Date(transaction.date), 'PPP', { locale: zhCN })}</div>
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
+                </ListRowLeading>
+                <ListRowTrailing className="sm:justify-end">
+                  <div className="sm:text-right">
                     <div
                       className={cn(
                         'text-sm font-semibold',
@@ -64,7 +65,7 @@ export default function TransactionList({ transactions, isLoading, onEdit, onDel
                     ) : null}
                   </div>
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 sm:justify-end">
                     <Button variant="ghost" size="sm" onClick={() => onEdit(transaction)} aria-label="Edit">
                       <Pencil className="h-4 w-4" />
                     </Button>
@@ -82,8 +83,8 @@ export default function TransactionList({ transactions, isLoading, onEdit, onDel
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                </div>
-              </div>
+                </ListRowTrailing>
+              </ListRow>
             ))}
           </div>
         )}

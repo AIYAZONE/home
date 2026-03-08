@@ -8,7 +8,9 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { ListRow, ListRowLeading, ListRowTrailing } from '@/components/ui/list-row';
 import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
+import { Select } from '@/components/ui/select';
 
 export default function SettingsMembers() {
   const { data: profile } = useProfile();
@@ -18,9 +20,9 @@ export default function SettingsMembers() {
   const [remarkName, setRemarkName] = useState('');
 
   const roleConfig: Record<string, { label: string; icon: typeof Shield; color: string }> = {
-    admin: { label: '管理员', icon: Crown, color: 'text-amber-600 bg-amber-50' },
-    parent: { label: '家长', icon: Shield, color: 'text-blue-600 bg-blue-50' },
-    child: { label: '孩子', icon: Baby, color: 'text-purple-600 bg-purple-50' },
+    admin: { label: '管理员', icon: Crown, color: 'text-amber-700 bg-amber-500/10 dark:text-amber-300' },
+    parent: { label: '家长', icon: Shield, color: 'text-sky-700 bg-sky-500/10 dark:text-sky-300' },
+    child: { label: '孩子', icon: Baby, color: 'text-fuchsia-700 bg-fuchsia-500/10 dark:text-fuchsia-300' },
   };
 
   const closeRemarkModal = () => {
@@ -60,8 +62,8 @@ export default function SettingsMembers() {
                   const displayName = remark || fallbackName;
 
                 return (
-                  <div key={member.id} className="flex items-center justify-between gap-4 px-4 py-4">
-                    <div className="flex min-w-0 items-center gap-3">
+                  <ListRow key={member.id}>
+                    <ListRowLeading>
                       <div className="grid h-9 w-9 place-items-center rounded-xl bg-muted/60"><User className="h-4 w-4" /></div>
                       <div className="min-w-0">
                           <div className="truncate text-sm font-medium">
@@ -73,8 +75,24 @@ export default function SettingsMembers() {
                             {member.email}
                           </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2">
+                    </ListRowLeading>
+                    <ListRowTrailing className="sm:justify-end">
+                      <div className={cn('inline-flex items-center gap-1.5 rounded-2xl px-3 py-2 text-sm font-medium', roleCfg.color)}>
+                        <RoleIcon className="h-4 w-4" />
+                        {roleCfg.label}
+                      </div>
+                      {canChangeRole ? (
+                        <Select
+                          value={member.role}
+                          onChange={(e) => updateRole({ userId: member.id, newRole: e.target.value as 'admin' | 'parent' | 'child' })}
+                          disabled={isUpdatingRole}
+                          className="w-full sm:w-auto"
+                        >
+                          <option value="admin">管理员</option>
+                          <option value="parent">家长</option>
+                          <option value="child">孩子</option>
+                        </Select>
+                      ) : null}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -86,23 +104,8 @@ export default function SettingsMembers() {
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
-                      <div className={cn('inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium', roleCfg.color)}>
-                        <RoleIcon className="h-3.5 w-3.5" />{roleCfg.label}
-                      </div>
-                      {canChangeRole && (
-                        <select
-                          value={member.role}
-                          onChange={(e) => updateRole({ userId: member.id, newRole: e.target.value as 'admin' | 'parent' | 'child' })}
-                          disabled={isUpdatingRole}
-                          className="h-9 rounded-lg border border-input bg-background px-2 text-sm"
-                        >
-                          <option value="admin">管理员</option>
-                          <option value="parent">家长</option>
-                          <option value="child">孩子</option>
-                        </select>
-                      )}
-                    </div>
-                  </div>
+                    </ListRowTrailing>
+                  </ListRow>
                 );
               })}
             </div>

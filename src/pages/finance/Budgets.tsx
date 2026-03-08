@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { ListRow, ListRowLeading, ListRowTrailing } from '@/components/ui/list-row';
 import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
 import { compareByLocale, formatMoney, formatPercent } from '@/lib/format';
 import { addMonths, computeAverageMonthlySpentByCategory, computeBudgetMetrics, parseMonthStartKey, toMonthStartKey, topEntries } from '@/lib/budget';
@@ -180,9 +181,9 @@ export default function FinanceBudgets() {
                   <label className="text-sm font-medium">预算金额</label>
                   <Input value={budgetAmount} onChange={(e) => setBudgetAmount(e.target.value)} placeholder="0.00" />
                   {budgetCategoryName.trim() && selectedCategoryAvg > 0 ? (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center">
                       <div className="min-w-0 flex-1 truncate">过去 3 个月月均 {formatMoney(selectedCategoryAvg)}，建议 {formatMoney(suggestedBudget)}</div>
-                      <Button className="shrink-0" type="button" size="sm" variant="secondary" onClick={() => setBudgetAmount(String(Math.round(suggestedBudget * 100) / 100))}>填入建议</Button>
+                      <Button className="w-full shrink-0 sm:w-auto" type="button" size="sm" variant="secondary" onClick={() => setBudgetAmount(String(Math.round(suggestedBudget * 100) / 100))}>填入建议</Button>
                     </div>
                   ) : (
                     <div className="text-xs text-muted-foreground">建议从“最常超支的分类”开始设置预算。</div>
@@ -206,8 +207,8 @@ export default function FinanceBudgets() {
                     const ratio = b.amount > 0 ? spent / b.amount : 0;
                     const badge: 'success' | 'warning' | 'danger' = ratio >= 1 ? 'danger' : ratio >= 0.8 ? 'warning' : 'success';
                     return (
-                      <div key={b.id} className="px-4 py-4">
-                        <div className="flex items-start justify-between gap-4">
+                      <ListRow key={b.id}>
+                        <ListRowLeading className="items-start">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <div className="truncate text-sm font-medium">{b.category_name}</div>
@@ -223,10 +224,13 @@ export default function FinanceBudgets() {
                               />
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                        </ListRowLeading>
+                        <ListRowTrailing className="sm:justify-end">
+                          <div className="flex items-center gap-2 sm:justify-end">
                             <Button
                               variant="secondary"
                               size="sm"
+                              className="w-full sm:w-auto"
                               onClick={() => {
                                 setBudgetCategoryName(b.category_name);
                                 setBudgetAmount(String(b.amount));
@@ -237,6 +241,7 @@ export default function FinanceBudgets() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              className="w-full sm:w-auto"
                               disabled={isDeleting}
                               onClick={() => {
                                 if (window.confirm('确认删除？')) deleteBudget(b.id);
@@ -245,8 +250,8 @@ export default function FinanceBudgets() {
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
-                        </div>
-                      </div>
+                        </ListRowTrailing>
+                      </ListRow>
                     );
                   })}
                 </div>

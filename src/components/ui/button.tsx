@@ -10,19 +10,20 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 const base =
-  'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors transition-shadow outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:pointer-events-none';
+  'inline-flex items-center justify-center gap-2 rounded-2xl font-medium transition-colors transition-shadow outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50';
 
 const variants: Record<ButtonVariant, string> = {
-  primary: 'bg-primary text-primary-foreground shadow-sm hover:shadow-md hover:brightness-95 active:brightness-90',
-  secondary: 'bg-secondary text-secondary-foreground border border-border shadow-sm hover:bg-secondary/80 hover:shadow-md active:bg-secondary/70',
-  ghost: 'bg-transparent text-foreground hover:bg-accent active:bg-accent/80',
-  danger: 'bg-destructive text-destructive-foreground shadow-sm hover:shadow-md hover:brightness-95 active:brightness-90',
+  primary: 'bg-primary text-primary-foreground shadow-elevated hover:shadow-glow hover:brightness-95 active:brightness-90',
+  secondary:
+    'border border-border bg-surface-2 text-secondary-foreground shadow-elevated hover:bg-surface-3 hover:shadow-glow active:bg-surface-3',
+  ghost: 'bg-transparent text-foreground hover:bg-surface-2 active:bg-surface-3',
+  danger: 'bg-destructive text-destructive-foreground shadow-elevated hover:shadow-glow hover:brightness-95 active:brightness-90',
 };
 
 const sizes: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-sm',
-  md: 'h-10 px-4 text-sm',
-  lg: 'h-11 px-5 text-base',
+  sm: 'h-10 px-3 text-sm',
+  md: 'h-11 px-4 text-sm',
+  lg: 'h-12 px-5 text-base',
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(

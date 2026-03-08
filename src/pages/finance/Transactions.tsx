@@ -12,7 +12,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { ListRow, ListRowLeading, ListRowTrailing } from '@/components/ui/list-row';
 import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
+import { Select } from '@/components/ui/select';
 
 export default function FinanceTransactions() {
   const { data: profile, isLoading: isProfileLoading } = useProfile();
@@ -156,26 +158,26 @@ export default function FinanceTransactions() {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">时间</label>
-              <select value={filterPreset} onChange={(e) => setFilterPreset(e.target.value as any)} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
+              <Select value={filterPreset} onChange={(e) => setFilterPreset(e.target.value as any)}>
                 <option value="30d">近 30 天</option>
                 <option value="thisMonth">本月</option>
                 <option value="all">全部</option>
-              </select>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">类型</label>
-              <select value={filterType} onChange={(e) => setFilterType(e.target.value as any)} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
+              <Select value={filterType} onChange={(e) => setFilterType(e.target.value as any)}>
                 <option value="all">全部</option>
                 <option value="expense">支出</option>
                 <option value="income">收入</option>
-              </select>
+              </Select>
             </div>
             <div className="space-y-1.5 md:col-span-2">
               <label className="text-sm font-medium">分类</label>
               <Input value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} placeholder="例如：餐饮" list="filter-category-options" />
               <datalist id="filter-category-options">{(categories ?? []).map((c) => <option key={c.id} value={c.name} />)}</datalist>
             </div>
-            <div className="flex items-end md:col-span-2">
+            <div className="flex md:items-end md:col-span-2">
               <Button variant="secondary" className="w-full" onClick={() => { setKeyword(''); setFilterType('all'); setFilterCategory(''); setFilterPreset('30d'); }}>重置筛选</Button>
             </div>
           </div>
@@ -189,13 +191,18 @@ export default function FinanceTransactions() {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-3">
                   <div><CardTitle>{isEditing ? '编辑交易' : '添加新交易'}</CardTitle><CardDescription>快速录入</CardDescription></div>
-                  <button className="grid h-9 w-9 place-items-center rounded-xl text-muted-foreground hover:bg-accent" onClick={closeEditor}><X className="h-5 w-5" /></button>
+                  <button
+                    className="grid h-10 w-10 place-items-center rounded-2xl p-2 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    onClick={closeEditor}
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
                 </div>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
                   {isAddingOpen && latestTransaction && (
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2">
+                    <div className="flex flex-col gap-2 rounded-2xl border border-border/60 bg-surface-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="text-xs text-muted-foreground">最近：{formatMoney(latestTransaction.type === 'income' ? latestTransaction.amount : -latestTransaction.amount, { signDisplay: 'always' })} · {latestTransaction.category}</div>
                       <Button type="button" size="sm" variant="secondary" onClick={() => { setAmount(String(latestTransaction.amount)); setCategory(latestTransaction.category); setDescription(latestTransaction.description ?? ''); setType(latestTransaction.type === 'income' ? 'income' : 'expense'); setVisibility(latestTransaction.visibility ?? 'family'); }}>重复</Button>
                     </div>
@@ -210,10 +217,10 @@ export default function FinanceTransactions() {
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">可见范围</label>
-                      <select value={visibility} onChange={(e) => setVisibility(e.target.value as any)} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
+                      <Select value={visibility} onChange={(e) => setVisibility(e.target.value as any)}>
                         <option value="family">家庭可见</option>
                         <option value="private">仅自己</option>
-                      </select>
+                      </Select>
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">日期</label>
@@ -245,7 +252,14 @@ export default function FinanceTransactions() {
                     </div>
                     <div className="space-y-1.5 md:col-span-2"><label className="text-sm font-medium">描述（选填）</label><Input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="备注信息" /></div>
                   </div>
-                  <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={closeEditor}>取消</Button><Button type="submit" disabled={isAdding || isUpdating}>{isAdding || isUpdating ? '保存中…' : '保存'}</Button></div>
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <Button type="button" variant="secondary" onClick={closeEditor} className="w-full sm:w-auto">
+                      取消
+                    </Button>
+                    <Button type="submit" disabled={isAdding || isUpdating} className="w-full sm:w-auto">
+                      {isAdding || isUpdating ? '保存中…' : '保存'}
+                    </Button>
+                  </div>
                 </form>
               </CardContent>
             </Card>
@@ -259,8 +273,8 @@ export default function FinanceTransactions() {
           {isTransactionsLoading ? <div className="py-10 text-center text-sm text-muted-foreground">加载中…</div> : filteredTransactions.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">暂无交易记录</div> : (
             <div className="divide-y divide-border rounded-xl border border-border">
               {filteredTransactions.map((transaction) => (
-                <div key={transaction.id} className="flex items-center justify-between gap-4 px-4 py-4 hover:bg-accent/40">
-                  <div className="flex min-w-0 items-center gap-3">
+                <ListRow key={transaction.id}>
+                  <ListRowLeading>
                     <div className={cn('grid h-9 w-9 place-items-center rounded-xl', transaction.type === 'income' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-rose-500/10 text-rose-700')}>
                       {transaction.type === 'income' ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                     </div>
@@ -268,15 +282,20 @@ export default function FinanceTransactions() {
                       <div className="flex min-w-0 items-center gap-2"><div className="truncate text-sm font-medium">{transaction.category}</div>{transaction.visibility === 'private' ? <Badge variant="warning">私密</Badge> : null}</div>
                       <div className="truncate text-xs text-muted-foreground">{format(new Date(transaction.date), 'PPP', { locale: zhCN })}</div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right"><div className={cn('text-sm font-semibold', transaction.type === 'income' ? 'text-emerald-600' : '')}>{formatMoney(transaction.type === 'income' ? transaction.amount : -transaction.amount, { signDisplay: 'always' })}</div>{transaction.description && <div className="text-xs text-muted-foreground">{transaction.description}</div>}</div>
-                    <div className="flex items-center gap-1">
+                  </ListRowLeading>
+                  <ListRowTrailing className="sm:justify-end">
+                    <div className="sm:text-right">
+                      <div className={cn('text-sm font-semibold', transaction.type === 'income' ? 'text-emerald-600' : '')}>
+                        {formatMoney(transaction.type === 'income' ? transaction.amount : -transaction.amount, { signDisplay: 'always' })}
+                      </div>
+                      {transaction.description && <div className="text-xs text-muted-foreground">{transaction.description}</div>}
+                    </div>
+                    <div className="flex items-center gap-1 sm:justify-end">
                       <Button variant="ghost" size="sm" onClick={() => openEdit(transaction)}><Pencil className="h-4 w-4" /></Button>
                       <Button variant="ghost" size="sm" onClick={() => { if (window.confirm('确认删除？')) deleteTransaction(transaction.id); }}><Trash2 className="h-4 w-4" /></Button>
                     </div>
-                  </div>
-                </div>
+                  </ListRowTrailing>
+                </ListRow>
               ))}
             </div>
           )}

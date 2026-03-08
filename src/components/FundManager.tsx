@@ -759,7 +759,7 @@ export default function FundManager() {
                           const progress = fund.target_amount > 0 ? (Number(fund.current_amount) / Number(fund.target_amount)) * 100 : 0;
                           return (
                             <div key={fund.id} className="rounded-xl border border-border bg-card/50 p-4">
-                              <div className="flex items-start justify-between gap-4">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium">{fund.name}</span>
@@ -810,7 +810,7 @@ export default function FundManager() {
                                     </div>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-1">
+                                <div className="flex flex-wrap items-center justify-end gap-1">
                                   <Button variant="ghost" size="sm" onClick={() => openAdjust(fund)}>
                                     <ArrowDownUp className="h-4 w-4" />
                                   </Button>
@@ -886,7 +886,7 @@ export default function FundManager() {
 
                         <div className="space-y-1.5">
                           <label className="text-sm font-medium text-foreground">基金类型 *</label>
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                             {(Object.entries(fundKindConfig) as Array<[FundKind, (typeof fundKindConfig)[FundKind]]>).map(([key, cfg]) => {
                               const Icon = cfg.icon;
                               return (
@@ -895,7 +895,7 @@ export default function FundManager() {
                                   type="button"
                                   onClick={() => setFormKind(key)}
                                   className={cn(
-                                    'flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                                    'min-h-11 flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2 text-sm font-medium transition-all',
                                     formKind === key
                                       ? cn(cfg.bgColor, cfg.color, 'ring-2 ring-primary/50', cfg.borderColor)
                                       : 'bg-muted/50 hover:bg-muted border border-transparent'
