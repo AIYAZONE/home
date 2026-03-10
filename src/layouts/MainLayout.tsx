@@ -27,6 +27,10 @@ function isLinkNode(node: NavNode): node is Extract<NavNode, { href: string }> {
   return 'href' in node;
 }
 
+function matchHref(href: string, pathname: string): boolean {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 function getGroupKey(item: Extract<NavNode, { kind: 'group' }>): string {
   const overviewChild = item.children.find((child): child is Extract<NavNode, { href: string }> => isLinkNode(child) && child.name === '概览');
   const firstChild = item.children.find((child): child is Extract<NavNode, { href: string }> => isLinkNode(child));
@@ -35,18 +39,26 @@ function getGroupKey(item: Extract<NavNode, { kind: 'group' }>): string {
   return overviewHref ?? firstHref ?? item.name;
 }
 
-function isGroupActive(item: Extract<NavNode, { kind: 'group' }>, pathname: string): boolean {
-  return item.children.some((child) => isLinkNode(child) && (child.href === pathname || pathname.startsWith(`${child.href}/`)));
-}
-
-function findActiveNode(items: NavNode[], pathname: string): NavNode | null {
+function findBestActiveLink(items: NavNode[], pathname: string): Extract<NavNode, { href: string }> | null {
+  let best: Extract<NavNode, { href: string }> | null = null;
   for (const item of items) {
     if (isHeadingNode(item)) continue;
-    if (isLinkNode(item) && (item.href === pathname || pathname.startsWith(`${item.href}/`))) return item;
-    if (isGroupNode(item)) {
-      const found = findActiveNode(item.children, pathname);
-      if (found) return found;
+    if (isLinkNode(item) && matchHref(item.href, pathname)) {
+      if (!best || item.href.length > best.href.length) best = item;
     }
+    if (isGroupNode(item)) {
+      const found = findBestActiveLink(item.children, pathname);
+      if (found && (!best || found.href.length > best.href.length)) best = found;
+    }
+  }
+  return best;
+}
+
+function findActiveTopLevelGroup(items: NavNode[], pathname: string): Extract<NavNode, { kind: 'group' }> | null {
+  for (const item of items) {
+    if (!isGroupNode(item)) continue;
+    const found = findBestActiveLink(item.children, pathname);
+    if (found) return item;
   }
   return null;
 }
@@ -74,7 +86,11 @@ export default function MainLayout() {
   const { isDark, toggleTheme } = useTheme();
 
   const current = useMemo(() => {
-    return findActiveNode(navigation, location.pathname) ?? navigation[0];
+    return findBestActiveLink(navigation, location.pathname) ?? navigation[0];
+  }, [location.pathname]);
+
+  const currentTopGroup = useMemo(() => {
+    return findActiveTopLevelGroup(navigation, location.pathname);
   }, [location.pathname]);
 
   const closeDrawer = () => setDrawerOpen(false);
@@ -192,35 +208,38 @@ export default function MainLayout() {
             className="fixed z-[9999] min-w-[160px] rounded-2xl border border-border/60 bg-popover p-1.5 shadow-lg"
             style={{ top: submenuPopup.top, left: submenuPopup.left }}
           >
-            {submenuPopup.item.children.map((child, index) => {
-              if (isHeadingNode(child)) {
+            {(() => {
+              const activeChild = findBestActiveLink(submenuPopup.item.children, location.pathname);
+              return submenuPopup.item.children.map((child, index) => {
+                if (isHeadingNode(child)) {
+                  return (
+                    <div
+                      key={`heading-${index}-${child.name}`}
+                      className="mt-1 px-3 py-1 text-[11px] font-semibold tracking-wide text-muted-foreground/70 first:mt-0"
+                    >
+                      {child.name}
+                    </div>
+                  );
+                }
+                if (!isLinkNode(child)) return null;
+                const isActive = activeChild?.href === child.href;
+                const Icon = child.icon;
                 return (
-                  <div
-                    key={`heading-${index}-${child.name}`}
-                    className="mt-1 px-3 py-1 text-[11px] font-semibold tracking-wide text-muted-foreground/70 first:mt-0"
+                  <Link
+                    key={child.href}
+                    to={child.href}
+                    onClick={() => setSubmenuPopup(null)}
+                    className={cn(
+                      'flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors',
+                      isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                    )}
                   >
+                    <Icon className="h-4 w-4" />
                     {child.name}
-                  </div>
+                  </Link>
                 );
-              }
-              if (!isLinkNode(child)) return null;
-              const isActive = location.pathname === child.href || location.pathname.startsWith(`${child.href}/`);
-              const Icon = child.icon;
-              return (
-                <Link
-                  key={child.href}
-                  to={child.href}
-                  onClick={() => setSubmenuPopup(null)}
-                  className={cn(
-                    'flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors',
-                    isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {child.name}
-                </Link>
-              );
-            })}
+              });
+            })()}
           </div>,
           document.body,
         )}
@@ -268,11 +287,8 @@ export default function MainLayout() {
                 const hasChildren = Boolean(groupItem);
                 const groupKey = groupItem ? getGroupKey(groupItem) : (isLinkNode(item) ? item.href : item.name);
                 const isExpanded = groupItem ? expandedMenus.has(groupKey) : false;
-                const isActive = groupItem
-                  ? isGroupActive(groupItem, location.pathname)
-                  : isLinkNode(item)
-                    ? location.pathname === item.href || location.pathname.startsWith(`${item.href}/`)
-                    : false;
+                const activeChild = groupItem ? findBestActiveLink(groupItem.children, location.pathname) : null;
+                const isActive = groupItem ? Boolean(activeChild) : isLinkNode(item) ? matchHref(item.href, location.pathname) : false;
                 const Icon = item.icon;
 
                 if (sidebarCollapsed) {
@@ -350,7 +366,7 @@ export default function MainLayout() {
                               );
                             }
                             if (!isLinkNode(child)) return null;
-                            const childIsActive = location.pathname === child.href || location.pathname.startsWith(`${child.href}/`);
+                            const childIsActive = activeChild?.href === child.href;
                             const ChildIcon = child.icon;
                             return (
                               <Link
@@ -459,11 +475,8 @@ export default function MainLayout() {
                 const hasChildren = Boolean(groupItem);
                 const groupKey = groupItem ? getGroupKey(groupItem) : (isLinkNode(item) ? item.href : item.name);
                 const isExpanded = groupItem ? expandedMenus.has(groupKey) : false;
-                const isActive = groupItem
-                  ? isGroupActive(groupItem, location.pathname)
-                  : isLinkNode(item)
-                    ? location.pathname === item.href || location.pathname.startsWith(`${item.href}/`)
-                    : false;
+                const activeChild = groupItem ? findBestActiveLink(groupItem.children, location.pathname) : null;
+                const isActive = groupItem ? Boolean(activeChild) : isLinkNode(item) ? matchHref(item.href, location.pathname) : false;
                 const Icon = item.icon;
 
                 return (
@@ -564,7 +577,7 @@ export default function MainLayout() {
             </button>
 
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold text-foreground">{current?.name}</div>
+              <div className="truncate text-sm font-semibold text-foreground">{currentTopGroup?.name ?? current?.name}</div>
               <div className="hidden truncate text-xs text-muted-foreground sm:block">简单易用 · 响应式 · 协作</div>
             </div>
 

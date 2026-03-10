@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useBudgets } from '@/hooks/useBudgets';
 import { useBudgetsForMonths } from '@/hooks/useBudgetsForMonths';
 import { useBudgetTemplates } from '@/hooks/useBudgetTemplates';
@@ -23,6 +23,8 @@ import { supabase } from '@/lib/supabase';
 import { useToastStore } from '@/stores/toast';
 import { toUserMessage } from '@/lib/error';
 import { BudgetEditorModal, BudgetEditorInitialValue } from '@/components/finance/BudgetEditorModal';
+import { RecurringTransaction } from '@/types';
+import { normalizeCategoryName } from '@/lib/category';
 
 export default function FinanceBudgets() {
   const { data: profile } = useProfile();
@@ -175,6 +177,41 @@ export default function FinanceBudgets() {
       pushToast({ variant: 'danger', title: '保存失败', message: toUserMessage(err) });
     },
   });
+
+  const { data: recurringTransactions } = useQuery({
+    queryKey: ['recurring_transactions', profile?.family_id],
+    queryFn: async () => {
+      if (!profile?.family_id) return [];
+      const { data, error } = await supabase
+        .from('recurring_transactions')
+        .select('*')
+        .eq('family_id', profile.family_id)
+        .eq('active', true);
+      if (error) throw error;
+      return data as RecurringTransaction[];
+    },
+    enabled: !!profile?.family_id,
+  });
+
+  const recurringRecommendations = useMemo(() => {
+    const existing = new Set((budgets ?? []).map((b) => normalizeCategoryName(b.category_name)).filter(Boolean));
+    return (recurringTransactions ?? [])
+      .filter((r) => r.type === 'expense')
+      .map((r) => {
+        const category = normalizeCategoryName(r.category);
+        const amount = Number(r.amount);
+        const monthlyAmount =
+          r.cadence === 'monthly' ? amount : Math.round(((amount * 52) / 12) * 100) / 100;
+        return { category, cadence: r.cadence, amount, monthlyAmount };
+      })
+      .filter((r) => r.category && Number.isFinite(r.monthlyAmount) && r.monthlyAmount > 0 && !existing.has(r.category))
+      .sort((a, b) => {
+        if (a.cadence !== b.cadence) return a.cadence === 'monthly' ? -1 : 1;
+        if (a.monthlyAmount !== b.monthlyAmount) return b.monthlyAmount - a.monthlyAmount;
+        return compareByLocale(a.category, b.category);
+      })
+      .slice(0, 12);
+  }, [budgets, recurringTransactions]);
 
   const isLoading = isBudgetsLoading || isTransactionsLoading || isCategoriesLoading;
 
@@ -469,6 +506,7 @@ export default function FinanceBudgets() {
         mode={budgetEditorMode}
         categories={budgetCategoryOptions}
         avgMonthlySpentByCategory={avgMonthlySpentByCategory}
+        recurringRecommendations={recurringRecommendations}
         initialValue={budgetEditorInitialValue}
         isSubmitting={isUpserting || isDeleting}
         onClose={closeBudgetEditor}

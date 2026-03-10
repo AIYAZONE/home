@@ -22,6 +22,7 @@ export function BudgetEditorModal(props: {
   description?: string;
   categories: Category[];
   avgMonthlySpentByCategory: Map<string, number>;
+  recurringRecommendations?: Array<{ category: string; cadence: 'weekly' | 'monthly'; amount: number; monthlyAmount: number }>;
   initialValue?: BudgetEditorInitialValue | null;
   isSubmitting?: boolean;
   onClose: () => void;
@@ -89,6 +90,30 @@ export function BudgetEditorModal(props: {
                 props.onSubmit({ id: props.initialValue?.id ?? null, category_id: categoryId, category_name: name, amount: amountNumber });
               }}
             >
+              {props.mode === 'add' && (props.recurringRecommendations?.length ?? 0) > 0 ? (
+                <div className="rounded-2xl border border-border/60 bg-surface p-3">
+                  <div className="text-sm font-medium">来自固定支出推荐</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {props.recurringRecommendations!.slice(0, 6).map((r) => (
+                      <Button
+                        key={`${r.category}-${r.cadence}-${r.amount}`}
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setCategoryName(r.category);
+                          setAmount(String(r.monthlyAmount));
+                        }}
+                      >
+                        {r.category} · {formatMoney(r.monthlyAmount)}
+                        {r.cadence === 'weekly' ? <span className="ml-1 opacity-70">（折算）</span> : null}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">点击即可带入分类与金额，然后直接保存。</div>
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-1.5 md:col-span-2">
                   <label className="text-sm font-medium">分类</label>
@@ -155,4 +180,3 @@ export function BudgetEditorModal(props: {
     </div>
   );
 }
-
