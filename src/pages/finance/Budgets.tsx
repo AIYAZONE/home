@@ -5,11 +5,12 @@ import { useBudgetsForMonths } from '@/hooks/useBudgetsForMonths';
 import { useBudgetTemplates } from '@/hooks/useBudgetTemplates';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useCategories } from '@/hooks/useCategories';
-import { ChevronLeft, ChevronRight, Loader2, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleCard } from '@/components/ui/collapsible-card';
 import { Input } from '@/components/ui/input';
 import { ListRow, ListRowLeading, ListRowTrailing } from '@/components/ui/list-row';
 import { MetricCard } from '@/components/ui/metric-card';
@@ -21,6 +22,7 @@ import { useProfile } from '@/hooks/useProfile';
 import { supabase } from '@/lib/supabase';
 import { useToastStore } from '@/stores/toast';
 import { toUserMessage } from '@/lib/error';
+import { BudgetEditorModal, BudgetEditorInitialValue } from '@/components/finance/BudgetEditorModal';
 
 export default function FinanceBudgets() {
   const { data: profile } = useProfile();
@@ -45,15 +47,27 @@ export default function FinanceBudgets() {
     return Math.min(36, Math.max(6, base));
   }, [monthStart, nowMonthStart]);
 
-  const { budgets, isLoading: isBudgetsLoading, upsertBudget, deleteBudget, ensureMonthBudgets, isEnsuring, isUpserting, isDeleting } = useBudgets(monthStartKey);
+  const {
+    budgets,
+    isLoading: isBudgetsLoading,
+    upsertBudget,
+    upsertBudgetAsync,
+    deleteBudget,
+    deleteBudgetAsync,
+    ensureMonthBudgets,
+    isEnsuring,
+    isUpserting,
+    isDeleting,
+  } = useBudgets(monthStartKey);
   const { transactions, isLoading: isTransactionsLoading } = useTransactions({ monthsBack });
   const { categories, isLoading: isCategoriesLoading } = useCategories();
   const { templates, isLoading: isTemplatesLoading, upsertTemplate, deleteTemplate, isUpserting: isTemplateUpserting, isDeleting: isTemplateDeleting } = useBudgetTemplates();
 
-  const [budgetCategoryName, setBudgetCategoryName] = useState('');
-  const [budgetAmount, setBudgetAmount] = useState('');
   const [templateCategoryName, setTemplateCategoryName] = useState('');
   const [templateAmount, setTemplateAmount] = useState('');
+  const [isBudgetEditorOpen, setIsBudgetEditorOpen] = useState(false);
+  const [budgetEditorMode, setBudgetEditorMode] = useState<'add' | 'edit'>('add');
+  const [budgetEditorInitialValue, setBudgetEditorInitialValue] = useState<BudgetEditorInitialValue | null>(null);
 
   const budgetCategoryOptions = useMemo(
     () => (categories ?? []).filter((c) => c.kind === 'expense' || c.kind === 'both').sort((a, b) => compareByLocale(a.name, b.name)),
@@ -69,14 +83,6 @@ export default function FinanceBudgets() {
     () => computeAverageMonthlySpentByCategory({ transactions: transactions ?? [], monthStart, months: 3 }),
     [transactions, monthStart],
   );
-
-  const selectedCategoryAvg = useMemo(() => {
-    const key = budgetCategoryName.trim();
-    if (!key) return 0;
-    return avgMonthlySpentByCategory.get(key) ?? 0;
-  }, [avgMonthlySpentByCategory, budgetCategoryName]);
-
-  const suggestedBudget = useMemo(() => Math.max(0, selectedCategoryAvg * 1.1), [selectedCategoryAvg]);
 
   const topUnbudgeted = useMemo(() => topEntries(metrics.unbudgetedByCategory, 5), [metrics.unbudgetedByCategory]);
 
@@ -174,6 +180,23 @@ export default function FinanceBudgets() {
 
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
 
+  const openAddBudget = (initial?: BudgetEditorInitialValue | null) => {
+    setBudgetEditorMode('add');
+    setBudgetEditorInitialValue(initial ?? null);
+    setIsBudgetEditorOpen(true);
+  };
+
+  const openEditBudget = (b: any) => {
+    setBudgetEditorMode('edit');
+    setBudgetEditorInitialValue({ id: b.id, category_id: b.category_id ?? null, category_name: b.category_name, amount: Number(b.amount) });
+    setIsBudgetEditorOpen(true);
+  };
+
+  const closeBudgetEditor = () => {
+    setIsBudgetEditorOpen(false);
+    setBudgetEditorInitialValue(null);
+  };
+
   return (
     <Page className="mx-auto max-w-6xl">
       <PageHeader>
@@ -252,51 +275,18 @@ export default function FinanceBudgets() {
                       <CardTitle>本月预算</CardTitle>
                       <CardDescription>执行率只统计已配置预算的分类，未配置的支出会单独计入“未预算支出”。</CardDescription>
                     </div>
-                    <Badge variant={summaryMetrics.executionRatio >= 1 ? 'danger' : summaryMetrics.executionRatio >= 0.8 ? 'warning' : 'success'}>
-                      执行率 {formatPercent(summaryMetrics.executionRatio * 100, 0)}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Button variant="secondary" size="sm" onClick={() => openAddBudget(null)}>
+                        <Plus className="h-4 w-4" />
+                        新增预算
+                      </Button>
+                      <Badge variant={summaryMetrics.executionRatio >= 1 ? 'danger' : summaryMetrics.executionRatio >= 0.8 ? 'warning' : 'success'}>
+                        执行率 {formatPercent(summaryMetrics.executionRatio * 100, 0)}
+                      </Badge>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="pt-0 space-y-4">
-              <form
-                className="grid grid-cols-1 gap-3 md:grid-cols-6"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const name = budgetCategoryName.trim();
-                  const amountNumber = Number(budgetAmount);
-                  if (!name || !Number.isFinite(amountNumber) || amountNumber <= 0) return;
-                  const categoryId = budgetCategoryOptions.find((c) => c.name === name)?.id ?? null;
-                  upsertBudget({ category_id: categoryId, category_name: name, amount: amountNumber });
-                  setBudgetCategoryName('');
-                  setBudgetAmount('');
-                }}
-              >
-                <div className="space-y-1.5 md:col-span-3">
-                  <label className="text-sm font-medium">分类</label>
-                  <Input value={budgetCategoryName} onChange={(e) => setBudgetCategoryName(e.target.value)} placeholder="例如：餐饮、交通" list="budget-category-options" />
-                  <datalist id="budget-category-options">{budgetCategoryOptions.map((c) => <option key={c.id} value={c.name} />)}</datalist>
-                </div>
-                <div className="space-y-1.5 md:col-span-2">
-                  <label className="text-sm font-medium">预算金额</label>
-                  <Input value={budgetAmount} onChange={(e) => setBudgetAmount(e.target.value)} placeholder="0.00" />
-                  {budgetCategoryName.trim() && selectedCategoryAvg > 0 ? (
-                    <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center">
-                      <div className="min-w-0 flex-1 truncate">过去 3 个月月均 {formatMoney(selectedCategoryAvg)}，建议 {formatMoney(suggestedBudget)}</div>
-                      <Button className="w-full shrink-0 sm:w-auto" type="button" size="sm" variant="secondary" onClick={() => setBudgetAmount(String(Math.round(suggestedBudget * 100) / 100))}>填入建议</Button>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-muted-foreground">建议从“最常超支的分类”开始设置预算。</div>
-                  )}
-                </div>
-                <div className="space-y-1.5 md:col-span-1">
-                  <div className="hidden h-5 md:block" />
-                  <Button type="submit" className="w-full" disabled={!budgetCategoryName.trim() || !budgetAmount.trim() || isUpserting}>
-                    {isUpserting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    保存
-                  </Button>
-                </div>
-              </form>
-
               {(budgets?.length ?? 0) === 0 ? (
                 <div className="py-8 text-center text-sm text-muted-foreground">暂无预算配置。可以先点右侧“未预算分类”的按钮快速开始。</div>
               ) : (
@@ -333,8 +323,7 @@ export default function FinanceBudgets() {
                               size="sm"
                               className="w-full sm:w-auto"
                               onClick={() => {
-                                setBudgetCategoryName(b.category_name);
-                                setBudgetAmount(String(b.amount));
+                                openEditBudget(b);
                               }}
                             >
                               编辑
@@ -367,30 +356,30 @@ export default function FinanceBudgets() {
                 metrics={metrics}
                 topUnbudgeted={topUnbudgeted}
                 onPickCategory={(name) => {
-                  setBudgetCategoryName(name);
-                  if (!budgetAmount.trim()) {
-                    const avg = avgMonthlySpentByCategory.get(name) ?? 0;
-                    if (avg > 0) setBudgetAmount(String(Math.round(avg * 1.1 * 100) / 100));
-                  }
+                  const avg = avgMonthlySpentByCategory.get(name) ?? 0;
+                  const suggested = avg > 0 ? Math.round(avg * 1.1 * 100) / 100 : 0;
+                  openAddBudget({ category_name: name, amount: suggested });
                 }}
               />
 
-              <Card className="overflow-hidden">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <CardTitle className="text-sm">常用预算模板</CardTitle>
-                      <CardDescription>固定预算先存模板，后续月份自动补齐；也可一键把本月保存为模板。</CardDescription>
-                    </div>
-                    <Badge variant="default" className="whitespace-nowrap">{(templates?.length ?? 0)} 条</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0 space-y-3">
-                  <Button className="w-full" variant="secondary" disabled={saveMonthAsTemplatesMutation.isPending} onClick={() => saveMonthAsTemplatesMutation.mutate()}>
+              <CollapsibleCard
+                defaultOpen={false}
+                title="常用预算模板"
+                description="低频设置：固定预算先存模板，后续月份自动补齐。"
+                badge={<Badge variant="default" className="whitespace-nowrap">{(templates?.length ?? 0)} 条</Badge>}
+                actions={
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={saveMonthAsTemplatesMutation.isPending}
+                    onClick={() => saveMonthAsTemplatesMutation.mutate()}
+                  >
                     {saveMonthAsTemplatesMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     本月保存为模板
                   </Button>
-
+                }
+              >
+                <div className="space-y-3 pt-4">
                   <form
                     className="grid grid-cols-1 gap-3 md:grid-cols-6 lg:grid-cols-1"
                     onSubmit={(e) => {
@@ -468,12 +457,42 @@ export default function FinanceBudgets() {
                       <span>（预算汇总加载中…）</span>
                     ) : null}
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </CollapsibleCard>
             </div>
           </div>
         </PageSection>
       </PageBody>
+
+      <BudgetEditorModal
+        open={isBudgetEditorOpen}
+        mode={budgetEditorMode}
+        categories={budgetCategoryOptions}
+        avgMonthlySpentByCategory={avgMonthlySpentByCategory}
+        initialValue={budgetEditorInitialValue}
+        isSubmitting={isUpserting || isDeleting}
+        onClose={closeBudgetEditor}
+        onSubmit={async (payload) => {
+          try {
+            await upsertBudgetAsync({ category_id: payload.category_id, category_name: payload.category_name, amount: payload.amount });
+            closeBudgetEditor();
+          } catch {
+            return;
+          }
+        }}
+        onDelete={
+          budgetEditorMode === 'edit'
+            ? async (id) => {
+                try {
+                  await deleteBudgetAsync(id);
+                  closeBudgetEditor();
+                } catch {
+                  return;
+                }
+              }
+            : undefined
+        }
+      />
     </Page>
   );
 }
