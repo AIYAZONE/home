@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
 import { formatMoney } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
 
@@ -362,7 +363,20 @@ export default function FinanceRecurring() {
           ) : (
             <div className="divide-y divide-border rounded-xl border border-border">
               {(recurringTransactions ?? []).map((r) => (
-                <div key={r.id} className="flex items-center justify-between gap-4 px-4 py-3">
+                <div
+                  key={r.id}
+                  className={cn(
+                    'flex items-center justify-between gap-4 px-4 py-3 transition-colors',
+                    canEdit(r) ? 'cursor-pointer hover:bg-surface-2' : 'cursor-default',
+                  )}
+                  onClick={() => openEdit(r)}
+                  role={canEdit(r) ? 'button' : undefined}
+                  tabIndex={canEdit(r) ? 0 : -1}
+                  onKeyDown={(e) => {
+                    if (!canEdit(r)) return;
+                    if (e.key === 'Enter' || e.key === ' ') openEdit(r);
+                  }}
+                >
                   <div className="min-w-0">
                     <div className="flex min-w-0 items-center gap-2">
                       <div className="truncate text-sm font-medium">{r.category}</div>
@@ -376,7 +390,15 @@ export default function FinanceRecurring() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="sm" disabled={saveMutation.isPending} onClick={() => openEdit(r)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={saveMutation.isPending}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEdit(r);
+                      }}
+                    >
                       <Pencil className="h-4 w-4" />
                       编辑
                     </Button>
@@ -384,7 +406,10 @@ export default function FinanceRecurring() {
                       variant="secondary"
                       size="sm"
                       disabled={generateMutation.isPending || r.next_run_date > new Date().toISOString().slice(0, 10)}
-                      onClick={() => generateMutation.mutate(r.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        generateMutation.mutate(r.id);
+                      }}
                     >
                       生成
                     </Button>
@@ -392,7 +417,10 @@ export default function FinanceRecurring() {
                       variant="ghost"
                       size="sm"
                       disabled={toggleMutation.isPending}
-                      onClick={() => toggleMutation.mutate({ id: r.id, active: !r.active })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleMutation.mutate({ id: r.id, active: !r.active });
+                      }}
                     >
                       {r.active ? '暂停' : '启用'}
                     </Button>
@@ -400,7 +428,8 @@ export default function FinanceRecurring() {
                       variant="ghost"
                       size="sm"
                       disabled={deleteMutation.isPending}
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         const ok = window.confirm(`确认删除固定项「${r.category}」吗？`);
                         if (!ok) return;
                         deleteMutation.mutate(r.id);
