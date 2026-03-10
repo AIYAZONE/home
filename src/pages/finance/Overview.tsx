@@ -5,15 +5,15 @@ import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
 import { AllocationRule, Category, FundAccount, RecurringTransaction, Transaction } from '@/types';
 import { Link, useNavigate } from 'react-router-dom';
-import { BarChart3, Calendar, DollarSign, Loader2, Plus, TrendingDown, TrendingUp, X, Receipt, PiggyBank, Repeat } from 'lucide-react';
+import { BarChart3, DollarSign, Loader2, Plus, TrendingDown, TrendingUp, X, Receipt, PiggyBank, Repeat } from 'lucide-react';
 import { formatMoney, formatPercent } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import { isFundReachedTarget } from '@/lib/fund';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
+import { TransactionEditorModal } from '@/components/finance/TransactionEditorModal';
 
 const quickLinks = [
   { name: '交易记录', href: '/finance/transactions', icon: Receipt, description: '查看和管理所有交易' },
@@ -28,17 +28,13 @@ export default function FinanceOverview() {
   const navigate = useNavigate();
   const pushToast = useToastStore((s) => s.push);
   const [isAdding, setIsAdding] = useState(false);
-
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('');
-  const [description, setDescription] = useState('');
-  const [type, setType] = useState<'income' | 'expense'>('expense');
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [visibility, setVisibility] = useState<'family' | 'private'>('family');
-  const [recurringActive, setRecurringActive] = useState(false);
-  const [recurringCadence, setRecurringCadence] = useState<'weekly' | 'monthly'>('monthly');
   const pendingRecurringRef = useRef<null | Omit<RecurringTransaction, 'id' | 'created_at' | 'updated_at'>>(null);
-  const [allocationPrompt, setAllocationPrompt] = useState<null | { transaction: Transaction; items: Array<{ fund: FundAccount; percentage: number; amount: number; ruleId: string }>; leftover: number }>(null);
+  const [allocationPrompt, setAllocationPrompt] = useState<null | {
+    transaction: Transaction;
+    items: Array<{ fund: FundAccount; percentage: number; amount: number; ruleId: string }>;
+    leftover: number;
+    skipped: Array<{ fund: FundAccount; reason: string }>;
+  }>(null);
   const [isApplyingAllocation, setIsApplyingAllocation] = useState(false);
 
   const monthStart = useMemo(() => {
@@ -111,12 +107,7 @@ export default function FinanceOverview() {
         createRecurringMutation.mutate(pendingRecurringRef.current);
         pendingRecurringRef.current = null;
       }
-      setRecurringActive(false);
       setIsAdding(false);
-      setAmount('');
-      setCategory('');
-      setDescription('');
-      setDate(new Date().toISOString().slice(0, 10));
       pushToast({ variant: 'success', title: '已保存', message: '交易已添加。' });
       await maybeOpenAllocationPrompt(created);
     },
@@ -128,7 +119,7 @@ export default function FinanceOverview() {
 
   const closeEditor = useCallback(() => {
     setIsAdding(false);
-    setRecurringActive(false);
+    pendingRecurringRef.current = null;
   }, []);
 
   const closeAllocationPrompt = useCallback(() => {
@@ -149,57 +140,6 @@ export default function FinanceOverview() {
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [allocationPrompt, closeAllocationPrompt]);
-
-  const latestTransaction = useMemo(() => {
-    const all = transactions ?? [];
-    if (all.length === 0) return null;
-    return all[0];
-  }, [transactions]);
-
-  const frequentCategoryTemplates = useMemo(() => {
-    const all = transactions ?? [];
-    const byCategory = new Map<string, number>();
-    all.filter((t) => (type === 'income' ? t.type === 'income' : t.type === 'expense')).forEach((t) => {
-      const key = t.category.trim();
-      if (!key) return;
-      byCategory.set(key, (byCategory.get(key) ?? 0) + 1);
-    });
-    return Array.from(byCategory.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([name]) => name)
-      .slice(0, 8);
-  }, [transactions, type]);
-
-  const recommendedCategories = useMemo(() => {
-    const q = description.trim().toLowerCase();
-    const all = transactions ?? [];
-    const candidates =
-      q.length >= 2
-        ? all.filter((t) => (t.description ?? '').toLowerCase().includes(q))
-        : all.filter((t) => (type === 'income' ? t.type === 'income' : t.type === 'expense'));
-    const scores = new Map<string, number>();
-    candidates.forEach((t) => {
-      const key = t.category.trim();
-      if (!key) return;
-      scores.set(key, (scores.get(key) ?? 0) + 1);
-    });
-    const current = category.trim();
-    const picked = Array.from(scores.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([name]) => name)
-      .filter((name) => name !== current)
-      .slice(0, 3);
-    if (picked.length > 0) return picked;
-    return frequentCategoryTemplates.slice(0, 3);
-  }, [transactions, description, type, category, frequentCategoryTemplates]);
-
-  const quickCategories = useMemo(() => {
-    const all = categories ?? [];
-    return all
-      .filter((c) => c.kind === 'both' || c.kind === type)
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
-  }, [categories, type]);
 
   if (isProfileLoading) {
     return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
@@ -268,24 +208,32 @@ export default function FinanceOverview() {
     const fundById = new Map<string, FundAccount>((funds as FundAccount[]).map((f) => [f.id, f]));
 
     const roundMoney = (n: number) => Math.round(n * 100) / 100;
-    const items = activeRules
-      .map((r) => {
+    const skipped: Array<{ fund: FundAccount; reason: string }> = [];
+    const items = activeRules.reduce(
+      (acc, r) => {
         const fund = fundById.get(r.fund_account_id);
-        if (!fund) return null;
+        if (!fund) return acc;
+        if (isFundReachedTarget(fund)) {
+          skipped.push({ fund, reason: '已达标' });
+          return acc;
+        }
         const pct = Number(r.percentage);
         const amount = roundMoney((Number(created.amount) * pct) / 100);
-        if (!Number.isFinite(amount) || amount <= 0) return null;
-        return { fund, percentage: pct, amount, ruleId: r.id };
-      })
-      .filter((x): x is { fund: FundAccount; percentage: number; amount: number; ruleId: string } => Boolean(x));
+        if (!Number.isFinite(amount) || amount <= 0) return acc;
+        acc.push({ fund, percentage: pct, amount, ruleId: r.id });
+        return acc;
+      },
+      [] as Array<{ fund: FundAccount; percentage: number; amount: number; ruleId: string }>,
+    );
 
     const totalAllocated = items.reduce((acc, x) => acc + x.amount, 0);
-    if (totalAllocated <= 0) return;
+    if (totalAllocated <= 0 && skipped.length === 0) return;
 
     setAllocationPrompt({
       transaction: created,
       items,
       leftover: roundMoney(Number(created.amount) - totalAllocated),
+      skipped,
     });
   };
 
@@ -307,34 +255,63 @@ export default function FinanceOverview() {
         return;
       }
 
+      const fundIds = allocationPrompt.items.map((x) => x.fund.id);
+      const latestFundById = new Map<string, FundAccount>();
+      if (fundIds.length > 0) {
+        const { data: latestFunds } = await supabase
+          .from('fund_accounts')
+          .select('*')
+          .eq('family_id', familyId)
+          .in('id', fundIds);
+        for (const f of (latestFunds as FundAccount[] | null) ?? []) latestFundById.set(f.id, f);
+      }
+
+      let appliedCount = 0;
+      let skippedCount = 0;
       for (const item of allocationPrompt.items) {
+        const latestFund = latestFundById.get(item.fund.id) ?? item.fund;
+        if (isFundReachedTarget(latestFund)) {
+          skippedCount += 1;
+          continue;
+        }
         const { error: insertError } = await supabase.from('fund_allocations').insert({
           family_id: familyId,
-          fund_account_id: item.fund.id,
+          fund_account_id: latestFund.id,
           transaction_id: allocationPrompt.transaction.id,
           amount: item.amount,
           kind: 'deposit',
           note: '存钱计划',
         });
         if (insertError) throw insertError;
+        appliedCount += 1;
 
         const { error: rpcError } = await supabase.rpc('update_fund_account_amount', {
-          p_fund_id: item.fund.id,
+          p_fund_id: latestFund.id,
           p_delta: item.amount,
         });
         if (!rpcError) continue;
 
-        const current = Number(item.fund.current_amount) || 0;
+        const current = Number(latestFund.current_amount) || 0;
         const { error: updateError } = await supabase
           .from('fund_accounts')
           .update({ current_amount: current + item.amount, updated_at: new Date().toISOString() })
-          .eq('id', item.fund.id);
+          .eq('id', latestFund.id);
         if (updateError) throw updateError;
+      }
+
+      if (appliedCount <= 0) {
+        pushToast({ variant: 'warning', title: '未执行分配', message: '所有可分配的基金均已达标或暂不可用，本次未产生分配记录。' });
+        setAllocationPrompt(null);
+        return;
       }
 
       queryClient.invalidateQueries({ queryKey: ['fund_accounts'] });
       queryClient.invalidateQueries({ queryKey: ['fund_allocations'] });
-      pushToast({ variant: 'success', title: '已分配', message: '存钱计划已执行，基金进度已更新。' });
+      pushToast({
+        variant: 'success',
+        title: '已分配',
+        message: skippedCount > 0 ? `存钱计划已执行（已跳过 ${skippedCount} 个已达标基金）。` : '存钱计划已执行，基金进度已更新。',
+      });
       setAllocationPrompt(null);
     } catch (err: unknown) {
       pushToast({ variant: 'danger', title: '分配失败', message: toUserMessage(err) });
@@ -413,224 +390,35 @@ export default function FinanceOverview() {
         })}
       </div>
 
-      {isAdding && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center"
-          onClick={closeEditor}
-        >
-          <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <CardTitle>添加新交易</CardTitle>
-                    <CardDescription>快速录入，后续可在列表里编辑与补充。</CardDescription>
-                  </div>
-                  <button
-                    className="grid h-9 w-9 place-items-center rounded-xl text-muted-foreground hover:bg-accent"
-                    onClick={closeEditor}
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (recurringActive) {
-                      const nextRun = new Date(`${date}T12:00:00`);
-                      nextRun.setHours(0, 0, 0, 0);
-                      pendingRecurringRef.current = {
-                        family_id: profile.family_id,
-                        owner_user_id: profile.id,
-                        visibility,
-                        amount: parseFloat(amount),
-                        category: category.trim(),
-                        description: description.trim() ? description.trim() : null,
-                        type,
-                        cadence: recurringCadence,
-                        next_run_date: nextRun.toISOString().slice(0, 10),
-                        active: true,
-                      };
-                    } else {
-                      pendingRecurringRef.current = null;
-                    }
-                    addTransactionMutation.mutate({
-                      visibility,
-                      amount: parseFloat(amount),
-                      category: category.trim(),
-                      description: description.trim() ? description.trim() : null,
-                      type,
-                      date: new Date(`${date}T12:00:00`).toISOString(),
-                      owner_user_id: profile.id,
-                    });
-                  }}
-                  className="space-y-4"
-                >
-                  {latestTransaction ? (
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2">
-                      <div className="text-xs text-muted-foreground">
-                        最近一笔：{formatMoney(latestTransaction.type === 'income' ? latestTransaction.amount : -latestTransaction.amount, { signDisplay: 'always' })} · {latestTransaction.category}
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          setAmount(String(latestTransaction.amount));
-                          setCategory(latestTransaction.category);
-                          setDescription(latestTransaction.description ?? '');
-                          setType(latestTransaction.type === 'income' ? 'income' : 'expense');
-                          setVisibility(latestTransaction.visibility ?? 'family');
-                        }}
-                      >
-                        重复上一笔
-                      </Button>
-                    </div>
-                  ) : null}
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-foreground">类型</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button type="button" variant={type === 'expense' ? 'danger' : 'secondary'} onClick={() => setType('expense')}>
-                          支出
-                        </Button>
-                        <Button type="button" variant={type === 'income' ? 'primary' : 'secondary'} onClick={() => setType('income')}>
-                          收入
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-foreground">可见范围</label>
-                      <select
-                        value={visibility}
-                          onChange={(e) => setVisibility(e.target.value === 'private' ? 'private' : 'family')}
-                        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                      >
-                        <option value="family">家庭可见</option>
-                        <option value="private">仅自己</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-foreground">日期</label>
-                      <div className="relative">
-                        <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="pl-9" />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-foreground">金额</label>
-                      <Input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
-                    </div>
-
-                    <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-sm font-medium text-foreground">分类</label>
-                      {recommendedCategories.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-2 mb-2">
-                          <div className="text-xs text-muted-foreground">推荐</div>
-                          {recommendedCategories.map((name) => (
-                            <button
-                              key={name}
-                              type="button"
-                              className={cn(
-                                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                                name === category
-                                  ? 'border-primary/30 bg-primary/10 text-foreground'
-                                  : 'border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground',
-                              )}
-                              onClick={() => setCategory(name)}
-                            >
-                              {name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <Input
-                        type="text"
-                        required
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        placeholder="例如：餐饮、交通"
-                        list="category-options"
-                      />
-                      <datalist id="category-options">
-                        {(categories ?? []).map((c) => (
-                          <option key={c.id} value={c.name} />
-                        ))}
-                      </datalist>
-                      {quickCategories.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {quickCategories.slice(0, 8).map((c) => (
-                            <button
-                              key={c.id}
-                              type="button"
-                              className={cn(
-                                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                                c.name === category
-                                  ? 'border-primary/30 bg-primary/10 text-foreground'
-                                  : 'border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground',
-                              )}
-                              onClick={() => setCategory(c.name)}
-                            >
-                              {c.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-sm font-medium text-foreground">描述（选填）</label>
-                      <Input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="备注信息" />
-                    </div>
-
-                    <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-sm font-medium text-foreground">固定支出/订阅（可选）</label>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={recurringActive}
-                            onChange={(e) => setRecurringActive(e.target.checked)}
-                          />
-                          设为固定支出/订阅
-                        </label>
-                        {recurringActive && (
-                          <>
-                            <select
-                              value={recurringCadence}
-                              onChange={(e) => setRecurringCadence(e.target.value === 'weekly' ? 'weekly' : 'monthly')}
-                              className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
-                            >
-                              <option value="monthly">每月</option>
-                              <option value="weekly">每周</option>
-                            </select>
-                            <div className="text-xs text-muted-foreground">保存后在"下次到期"当天提示确认生成交易。</div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="secondary" onClick={closeEditor}>
-                      取消
-                    </Button>
-                    <Button type="submit" disabled={addTransactionMutation.isPending}>
-                      {addTransactionMutation.isPending ? '保存中…' : '保存'}
-                    </Button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      )}
+      <TransactionEditorModal
+        open={isAdding}
+        mode="add"
+        familyId={profile?.family_id}
+        transactions={transactions}
+        categories={categories}
+        isSubmitting={addTransactionMutation.isPending}
+        onClose={closeEditor}
+        onSubmit={(payload, { recurring }) => {
+          if (!profile?.family_id) return;
+          if (recurring) {
+            pendingRecurringRef.current = {
+              family_id: profile.family_id,
+              owner_user_id: profile.id,
+              visibility: payload.visibility,
+              amount: payload.amount,
+              category: payload.category,
+              description: payload.description,
+              type: payload.type,
+              cadence: recurring.cadence,
+              next_run_date: recurring.next_run_date,
+              active: true,
+            };
+          } else {
+            pendingRecurringRef.current = null;
+          }
+          addTransactionMutation.mutate({ ...payload, owner_user_id: profile.id });
+        }}
+      />
 
       {allocationPrompt &&
         createPortal(
@@ -647,7 +435,9 @@ export default function FinanceOverview() {
                     <div className="min-w-0">
                       <CardTitle>存钱计划分配</CardTitle>
                       <CardDescription className="truncate">
-                        本次收入 {formatMoney(allocationPrompt.transaction.amount)}，将按规则分配到基金。
+                        {allocationPrompt.items.length > 0
+                          ? `本次收入 ${formatMoney(allocationPrompt.transaction.amount)}，将按规则分配到基金。`
+                          : `本次收入 ${formatMoney(allocationPrompt.transaction.amount)}，当前没有可分配的基金。`}
                       </CardDescription>
                     </div>
                     <Button variant="ghost" size="sm" onClick={closeAllocationPrompt} aria-label="关闭" disabled={isApplyingAllocation}>
@@ -656,6 +446,18 @@ export default function FinanceOverview() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {allocationPrompt.skipped.length > 0 ? (
+                    <div className="rounded-xl border border-border/60 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+                      本次已跳过 {allocationPrompt.skipped.length} 个已达标基金：
+                      <span className="ml-1 text-foreground">
+                        {allocationPrompt.skipped
+                          .slice(0, 3)
+                          .map((x) => x.fund.name)
+                          .join('、')}
+                        {allocationPrompt.skipped.length > 3 ? '…' : ''}
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="space-y-2">
                     {allocationPrompt.items.map((item) => (
                       <div key={item.fund.id} className="flex items-center justify-between rounded-xl border border-border/60 bg-background/40 px-3 py-2">
@@ -669,7 +471,7 @@ export default function FinanceOverview() {
                   </div>
 
                   {allocationPrompt.leftover > 0 ? (
-                    <div className="text-xs text-muted-foreground">剩余 {formatMoney(allocationPrompt.leftover)} 不会自动分配到基金。</div>
+                    <div className="text-xs text-muted-foreground">未分配 {formatMoney(allocationPrompt.leftover)}，不会自动分配到基金。</div>
                   ) : null}
 
                   <div className="flex justify-end gap-2">

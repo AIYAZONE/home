@@ -63,8 +63,25 @@ export interface Budget {
   id: string;
   family_id: string;
   month_start: string;
+  category_id?: string | null;
   category_name: string;
   amount: number;
+  source?: 'manual' | 'template' | 'inherited' | string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BudgetTemplate {
+  id: string;
+  family_id: string;
+  category_id: string | null;
+  category_name: string;
+  method: 'fixed';
+  amount: number;
+  start_month: string | null;
+  end_month: string | null;
+  priority: number;
+  active: boolean;
   created_at: string;
   updated_at: string;
 }

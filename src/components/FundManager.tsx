@@ -9,6 +9,7 @@ import { ArrowDownUp, Loader2, Plus, Shield, Target, Sparkles, Trash2, Pencil, T
 import { format } from 'date-fns';
 import { formatMoney, formatPercent } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { isFundReachedTarget } from '@/lib/fund';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -402,6 +403,26 @@ export default function FundManager() {
     return (allocationRules ?? []).filter((r) => r.is_active).reduce((acc, r) => acc + Number(r.percentage), 0);
   }, [allocationRules]);
 
+  const pauseReachedRulesMutation = useMutation({
+    mutationFn: async (ruleIds: string[]) => {
+      if (!profile?.family_id) throw new Error('缺少家庭信息');
+      if (ruleIds.length === 0) return;
+      const { error } = await supabase
+        .from('allocation_rules')
+        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .eq('family_id', profile.family_id)
+        .in('id', ruleIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['allocation_rules'] });
+      pushToast({ variant: 'success', title: '已暂停', message: '已暂停所有已达标基金的存钱计划规则。' });
+    },
+    onError: (err: unknown) => {
+      pushToast({ variant: 'danger', title: '暂停失败', message: toUserMessage(err) });
+    },
+  });
+
   const closeRuleEditor = () => {
     setEditingRuleFund(null);
     setEditingRuleId(null);
@@ -613,9 +634,37 @@ export default function FundManager() {
                 <CardTitle className="text-base">存钱计划</CardTitle>
                 <CardDescription className="truncate">把每次收入按比例分配到不同基金，形成可追溯的存钱流水。</CardDescription>
               </div>
-              <Badge variant={activeRulePercentTotal > 100 ? 'danger' : activeRulePercentTotal === 100 ? 'success' : 'default'}>
-                {formatPercent(activeRulePercentTotal, 0)}
-              </Badge>
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const reachedRuleIds = (funds ?? [])
+                    .map((f) => {
+                      const r = ruleByFundId[f.id];
+                      if (!r?.is_active) return null;
+                      if (!isFundReachedTarget(f)) return null;
+                      return r.id;
+                    })
+                    .filter((x): x is string => Boolean(x));
+
+                  return reachedRuleIds.length > 0 ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={pauseReachedRulesMutation.isPending}
+                      onClick={() => {
+                        const ok = window.confirm(`确认暂停 ${reachedRuleIds.length} 条已达标基金规则吗？`);
+                        if (!ok) return;
+                        pauseReachedRulesMutation.mutate(reachedRuleIds);
+                      }}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      暂停已达标
+                    </Button>
+                  ) : null;
+                })()}
+                <Badge variant={activeRulePercentTotal > 100 ? 'danger' : activeRulePercentTotal === 100 ? 'success' : 'default'}>
+                  {formatPercent(activeRulePercentTotal, 0)}
+                </Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="pt-0 space-y-3">
@@ -630,12 +679,16 @@ export default function FundManager() {
                   const rule = ruleByFundId[fund.id];
                   const isActive = !!rule?.is_active;
                   const pct = isActive ? Number(rule?.percentage ?? 0) : 0;
+                  const isReached = isFundReachedTarget(fund);
                   return (
                     <div key={fund.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/40 p-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <div className="truncate font-medium">{fund.name}</div>
                           <Badge variant="default" className="text-xs">{cfg.label}</Badge>
+                          {isReached ? (
+                            <Badge variant="success" className="text-xs">已达标</Badge>
+                          ) : null}
                           {isActive ? (
                             <Badge variant="success" className="text-xs">{formatPercent(pct, 0)}</Badge>
                           ) : (
@@ -643,6 +696,9 @@ export default function FundManager() {
                           )}
                         </div>
                         <div className="text-xs text-muted-foreground">优先级 {rule ? rule.priority : fund.priority}</div>
+                        {isReached && isActive ? (
+                          <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">已达标仍在分配，建议暂停该规则。</div>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-2">
                         <Button size="sm" variant="secondary" onClick={() => openRuleEditor(fund)}>

@@ -16,6 +16,10 @@ export function useBudgets(monthStart?: string) {
     queryKey: ['budgets', profile?.family_id, monthStartKey],
     queryFn: async () => {
       if (!profile?.family_id) return [];
+      const { error: ensureError } = await supabase.rpc('ensure_month_budgets', { p_month_start: monthStartKey });
+      if (ensureError) {
+        void ensureError;
+      }
       const { data, error } = await supabase
         .from('budgets')
         .select('*')
@@ -28,8 +32,29 @@ export function useBudgets(monthStart?: string) {
     enabled: !!profile?.family_id,
   });
 
+  const ensureMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.rpc('ensure_month_budgets', { p_month_start: monthStartKey });
+      if (error) throw error;
+      return data as { inserted_from_templates: number; inserted_from_previous_month: number }[] | null;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['budgets'] });
+      const row = data?.[0];
+      const n = (row?.inserted_from_templates ?? 0) + (row?.inserted_from_previous_month ?? 0);
+      pushToast({
+        variant: 'success',
+        title: '已补齐本月预算',
+        message: n > 0 ? `已新增 ${n} 条预算（模板 ${row?.inserted_from_templates ?? 0} / 继承 ${row?.inserted_from_previous_month ?? 0}）。` : '本月预算已是最新，无需补齐。',
+      });
+    },
+    onError: (err: any) => {
+      pushToast({ variant: 'danger', title: '补齐失败', message: toUserMessage(err) });
+    },
+  });
+
   const upsertMutation = useMutation({
-    mutationFn: async (payload: { category_name: string; amount: number }) => {
+    mutationFn: async (payload: { category_id?: string | null; category_name: string; amount: number }) => {
       if (!profile?.family_id) throw new Error('缺少家庭信息');
       const { data, error } = await supabase
         .from('budgets')
@@ -37,8 +62,10 @@ export function useBudgets(monthStart?: string) {
           {
             family_id: profile.family_id,
             month_start: monthStartKey,
+            category_id: payload.category_id ?? null,
             category_name: payload.category_name,
             amount: payload.amount,
+            source: 'manual',
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'family_id,month_start,category_name' },
@@ -76,8 +103,10 @@ export function useBudgets(monthStart?: string) {
     isLoading: query.isLoading,
     error: query.error,
     refetch: query.refetch,
+    ensureMonthBudgets: ensureMutation.mutate,
     upsertBudget: upsertMutation.mutate,
     deleteBudget: deleteMutation.mutate,
+    isEnsuring: ensureMutation.isPending,
     isUpserting: upsertMutation.isPending,
     isDeleting: deleteMutation.isPending,
   };
