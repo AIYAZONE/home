@@ -40,6 +40,11 @@ export default function SettingsData() {
         supabase.from('recurring_transactions').select('*').eq('family_id', profile.family_id),
       ]);
 
+      if (transactionsRes.error) throw transactionsRes.error;
+      if (categoriesRes.error) throw categoriesRes.error;
+      if (budgetsRes.error) throw budgetsRes.error;
+      if (recurringRes.error) throw recurringRes.error;
+
       const data = {
         exportDate: new Date().toISOString(),
         family: {
@@ -89,6 +94,25 @@ export default function SettingsData() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+
+      try {
+        await supabase.from('audit_logs').insert({
+          family_id: profile.family_id,
+          actor_id: profile.id,
+          action: 'data.exported',
+          entity_type: 'data_export',
+          metadata: {
+            format,
+            filename,
+            counts: {
+              transactions: (transactionsRes.data || []).length,
+              categories: (categoriesRes.data || []).length,
+              budgets: (budgetsRes.data || []).length,
+              recurringTransactions: (recurringRes.data || []).length,
+            },
+          },
+        });
+      } catch {}
 
       pushToast({ variant: 'success', title: '导出成功', message: `已下载 ${filename}` });
     } catch (err: unknown) {
@@ -147,4 +171,3 @@ export default function SettingsData() {
     </Page>
   );
 }
-

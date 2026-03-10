@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from './useProfile';
 import { Transaction } from '@/types';
@@ -92,7 +91,9 @@ export function useTransactions(options?: { monthsBack?: number }) {
     error: query.error,
     refetch: query.refetch,
     addTransaction: addMutation.mutate,
+    addTransactionAsync: addMutation.mutateAsync,
     updateTransaction: updateMutation.mutate,
+    updateTransactionAsync: updateMutation.mutateAsync,
     deleteTransaction: deleteMutation.mutate,
     isAdding: addMutation.isPending,
     isUpdating: updateMutation.isPending,

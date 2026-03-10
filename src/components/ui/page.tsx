@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 
 export function Page({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('space-y-6', className)} {...props} />;
+  return <div className={cn('space-y-8 pb-10', className)} {...props} />;
 }
 
 export function PageHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -23,4 +23,12 @@ export function PageDescription({ className, ...props }: React.HTMLAttributes<HT
 
 export function PageActions({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn('flex flex-col gap-2 sm:flex-row sm:items-center', className)} {...props} />;
+}
+
+export function PageBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('space-y-6', className)} {...props} />;
+}
+
+export function PageSection({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
+  return <section className={cn('space-y-4', className)} {...props} />;
 }

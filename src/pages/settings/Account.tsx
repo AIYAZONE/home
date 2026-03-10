@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CircleUser, LogOut, Shield, Loader2 } from 'lucide-react';
+import { CircleUser, LogOut, Shield, Loader2, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
@@ -11,13 +11,15 @@ import { Input } from '@/components/ui/input';
 import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
 
 export default function SettingsAccount() {
-  const { user, signOut } = useAuth();
+  const { user, session, signOut } = useAuth();
   const { data: profile, refetch } = useProfile();
   const navigate = useNavigate();
   const pushToast = useToastStore((s) => s.push);
   const [isEditingName, setIsEditingName] = useState(false);
   const [name, setName] = useState(profile?.name ?? '');
   const [isSaving, setIsSaving] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
@@ -38,6 +40,44 @@ export default function SettingsAccount() {
       pushToast({ variant: 'danger', title: '保存失败', message: err.message });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!session?.access_token) {
+      pushToast({ variant: 'danger', title: '未登录', message: '请重新登录后再试。' });
+      navigate('/login');
+      return;
+    }
+
+    if (deleteConfirmText.trim() !== '注销') {
+      pushToast({ variant: 'danger', title: '需要确认', message: '请输入“注销”以确认此操作。' });
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const res = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const payload = (await res.json().catch(() => null)) as { message?: string } | null;
+      if (!res.ok) {
+        throw new Error(payload?.message || '注销失败，请稍后再试。');
+      }
+
+      await signOut();
+      pushToast({ variant: 'success', title: '账号已注销', message: '已安全退出登录。' });
+      navigate('/login');
+    } catch (err: any) {
+      pushToast({ variant: 'danger', title: '注销失败', message: err?.message || '请稍后再试。' });
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmText('');
     }
   };
 
@@ -105,6 +145,23 @@ export default function SettingsAccount() {
               <LogOut className="h-5 w-5" />
               退出登录
             </Button>
+
+            <div className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3">
+              <div className="text-sm font-semibold text-foreground">注销账号</div>
+              <div className="mt-1 text-xs text-muted-foreground">此操作不可撤销，会清理你的私密/个人数据并删除账号。</div>
+              <div className="mt-3 space-y-2">
+                <Input value={deleteConfirmText} onChange={(e) => setDeleteConfirmText(e.target.value)} placeholder="输入“注销”以确认" />
+                <Button
+                  variant="danger"
+                  className="w-full justify-start"
+                  disabled={isDeleting || deleteConfirmText.trim() !== '注销'}
+                  onClick={handleDeleteAccount}
+                >
+                  {isDeleting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
+                  确认注销
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
