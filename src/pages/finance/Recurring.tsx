@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
-import { RecurringTransaction } from '@/types';
+import { Budget, RecurringTransaction } from '@/types';
 import { Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -14,12 +14,19 @@ import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/com
 import { formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toUserMessage } from '@/lib/error';
+import { normalizeCategoryName } from '@/lib/category';
 import { useToastStore } from '@/stores/toast';
 
 export default function FinanceRecurring() {
   const { data: profile, isLoading: isProfileLoading } = useProfile();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
+  const toDateKey = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formVisibility, setFormVisibility] = useState<'family' | 'private'>('family');
@@ -47,11 +54,41 @@ export default function FinanceRecurring() {
     enabled: !!profile?.family_id,
   });
 
+  const currentMonthStartKey = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}-01`;
+  }, []);
+
+  const { data: currentMonthBudgets } = useQuery({
+    queryKey: ['budgets', profile?.family_id, currentMonthStartKey],
+    queryFn: async () => {
+      if (!profile?.family_id) return [];
+      const { data, error } = await supabase
+        .from('budgets')
+        .select('*')
+        .eq('family_id', profile.family_id)
+        .eq('month_start', currentMonthStartKey);
+      if (error) throw error;
+      return data as Budget[];
+    },
+    enabled: !!profile?.family_id,
+  });
+
+  const budgetRecommendations = useMemo(() => {
+    const existing = new Set((recurringTransactions ?? []).map((r) => normalizeCategoryName(r.category)).filter(Boolean));
+    return (currentMonthBudgets ?? [])
+      .map((b) => ({ category: normalizeCategoryName(b.category_name), amount: Number(b.amount) }))
+      .filter((b) => b.category && Number.isFinite(b.amount) && b.amount > 0 && !existing.has(b.category))
+      .sort((a, b) => b.amount - a.amount);
+  }, [currentMonthBudgets, recurringTransactions]);
+
   const dueRecurringTransactions = useMemo(() => {
     const all = recurringTransactions ?? [];
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toDateKey(new Date());
     return all.filter((r) => r.active && r.next_run_date <= today);
-  }, [recurringTransactions]);
+  }, [recurringTransactions, toDateKey]);
 
   const canEdit = (r: RecurringTransaction) => {
     if (!profile?.id) return false;
@@ -68,7 +105,7 @@ export default function FinanceRecurring() {
     setFormDescription('');
     setFormType('expense');
     setFormCadence('monthly');
-    setFormNextRunDate(new Date().toISOString().slice(0, 10));
+    setFormNextRunDate(toDateKey(new Date()));
     setFormActive(true);
     setIsEditorOpen(true);
   };
@@ -232,6 +269,34 @@ export default function FinanceRecurring() {
                   }}
                   className="space-y-4"
                 >
+                  {!editingId && budgetRecommendations.length > 0 ? (
+                    <div className="rounded-2xl border border-border/60 bg-surface p-3">
+                      <div className="text-sm font-medium">来自本月预算推荐</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {budgetRecommendations.slice(0, 6).map((b) => (
+                          <Button
+                            key={`${b.category}-${b.amount}`}
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              const now = new Date();
+                              const nextMonthStart = toDateKey(new Date(now.getFullYear(), now.getMonth() + 1, 1));
+                              setFormType('expense');
+                              setFormCadence('monthly');
+                              setFormCategory(b.category);
+                              setFormAmount(String(b.amount));
+                              setFormNextRunDate(nextMonthStart);
+                            }}
+                          >
+                            {b.category} · {formatMoney(-b.amount, { signDisplay: 'always' })}
+                          </Button>
+                        ))}
+                      </div>
+                      <div className="mt-2 text-xs text-muted-foreground">点击即可带入分类与金额（默认下次到期为下个月 1 号）。</div>
+                    </div>
+                  ) : null}
+
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">类型</label>
