@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useBudgets } from '@/hooks/useBudgets';
 import { useBudgetsForMonths } from '@/hooks/useBudgetsForMonths';
 import { useBudgetTemplates } from '@/hooks/useBudgetTemplates';
@@ -10,7 +10,6 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CollapsibleCard } from '@/components/ui/collapsible-card';
 import { Input } from '@/components/ui/input';
 import { ListRow, ListRowLeading, ListRowTrailing } from '@/components/ui/list-row';
 import { MetricCard } from '@/components/ui/metric-card';
@@ -23,8 +22,6 @@ import { supabase } from '@/lib/supabase';
 import { useToastStore } from '@/stores/toast';
 import { toUserMessage } from '@/lib/error';
 import { BudgetEditorModal, BudgetEditorInitialValue } from '@/components/finance/BudgetEditorModal';
-import { RecurringTransaction } from '@/types';
-import { normalizeCategoryName } from '@/lib/category';
 
 export default function FinanceBudgets() {
   const { data: profile } = useProfile();
@@ -49,18 +46,7 @@ export default function FinanceBudgets() {
     return Math.min(36, Math.max(6, base));
   }, [monthStart, nowMonthStart]);
 
-  const {
-    budgets,
-    isLoading: isBudgetsLoading,
-    upsertBudget,
-    upsertBudgetAsync,
-    deleteBudget,
-    deleteBudgetAsync,
-    ensureMonthBudgets,
-    isEnsuring,
-    isUpserting,
-    isDeleting,
-  } = useBudgets(monthStartKey);
+  const { budgets, isLoading: isBudgetsLoading, upsertBudgetAsync, deleteBudgetAsync, ensureMonthBudgets, isEnsuring, isUpserting, isDeleting } = useBudgets(monthStartKey);
   const { transactions, isLoading: isTransactionsLoading } = useTransactions({ monthsBack });
   const { categories, isLoading: isCategoriesLoading } = useCategories();
   const { templates, isLoading: isTemplatesLoading, upsertTemplate, deleteTemplate, isUpserting: isTemplateUpserting, isDeleting: isTemplateDeleting } = useBudgetTemplates();
@@ -70,6 +56,8 @@ export default function FinanceBudgets() {
   const [isBudgetEditorOpen, setIsBudgetEditorOpen] = useState(false);
   const [budgetEditorMode, setBudgetEditorMode] = useState<'add' | 'edit'>('add');
   const [budgetEditorInitialValue, setBudgetEditorInitialValue] = useState<BudgetEditorInitialValue | null>(null);
+  const [confirmDeleteBudget, setConfirmDeleteBudget] = useState<null | { id: string; name: string }>(null);
+  const [confirmDeleteTemplate, setConfirmDeleteTemplate] = useState<null | { id: string; name: string }>(null);
 
   const budgetCategoryOptions = useMemo(
     () => (categories ?? []).filter((c) => c.kind === 'expense' || c.kind === 'both').sort((a, b) => compareByLocale(a.name, b.name)),
@@ -178,41 +166,6 @@ export default function FinanceBudgets() {
     },
   });
 
-  const { data: recurringTransactions } = useQuery({
-    queryKey: ['recurring_transactions', profile?.family_id],
-    queryFn: async () => {
-      if (!profile?.family_id) return [];
-      const { data, error } = await supabase
-        .from('recurring_transactions')
-        .select('*')
-        .eq('family_id', profile.family_id)
-        .eq('active', true);
-      if (error) throw error;
-      return data as RecurringTransaction[];
-    },
-    enabled: !!profile?.family_id,
-  });
-
-  const recurringRecommendations = useMemo(() => {
-    const existing = new Set((budgets ?? []).map((b) => normalizeCategoryName(b.category_name)).filter(Boolean));
-    return (recurringTransactions ?? [])
-      .filter((r) => r.type === 'expense')
-      .map((r) => {
-        const category = normalizeCategoryName(r.category);
-        const amount = Number(r.amount);
-        const monthlyAmount =
-          r.cadence === 'monthly' ? amount : Math.round(((amount * 52) / 12) * 100) / 100;
-        return { category, cadence: r.cadence, amount, monthlyAmount };
-      })
-      .filter((r) => r.category && Number.isFinite(r.monthlyAmount) && r.monthlyAmount > 0 && !existing.has(r.category))
-      .sort((a, b) => {
-        if (a.cadence !== b.cadence) return a.cadence === 'monthly' ? -1 : 1;
-        if (a.monthlyAmount !== b.monthlyAmount) return b.monthlyAmount - a.monthlyAmount;
-        return compareByLocale(a.category, b.category);
-      })
-      .slice(0, 12);
-  }, [budgets, recurringTransactions]);
-
   const isLoading = isBudgetsLoading || isTransactionsLoading || isCategoriesLoading;
 
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
@@ -232,6 +185,14 @@ export default function FinanceBudgets() {
   const closeBudgetEditor = () => {
     setIsBudgetEditorOpen(false);
     setBudgetEditorInitialValue(null);
+  };
+
+  const requestDeleteBudget = (payload: { id: string; name: string }) => {
+    setConfirmDeleteBudget(payload);
+  };
+
+  const requestDeleteTemplate = (payload: { id: string; name: string }) => {
+    setConfirmDeleteTemplate(payload);
   };
 
   return (
@@ -371,7 +332,7 @@ export default function FinanceBudgets() {
                               className="w-full sm:w-auto"
                               disabled={isDeleting}
                               onClick={() => {
-                                if (window.confirm('确认删除？')) deleteBudget(b.id);
+                                requestDeleteBudget({ id: b.id, name: b.category_name });
                               }}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -399,24 +360,22 @@ export default function FinanceBudgets() {
                 }}
               />
 
-              <CollapsibleCard
-                defaultOpen={false}
-                title="常用预算模板"
-                description="低频设置：固定预算先存模板，后续月份自动补齐。"
-                badge={<Badge variant="default" className="whitespace-nowrap">{(templates?.length ?? 0)} 条</Badge>}
-                actions={
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={saveMonthAsTemplatesMutation.isPending}
-                    onClick={() => saveMonthAsTemplatesMutation.mutate()}
-                  >
+              <Card className="overflow-hidden">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <CardTitle className="text-sm">常用预算模板</CardTitle>
+                      <CardDescription>固定预算先存模板，后续月份自动补齐；也可一键把本月保存为模板。</CardDescription>
+                    </div>
+                    <Badge variant="default" className="whitespace-nowrap">{(templates?.length ?? 0)} 条</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-3">
+                  <Button className="w-full" variant="secondary" disabled={saveMonthAsTemplatesMutation.isPending} onClick={() => saveMonthAsTemplatesMutation.mutate()}>
                     {saveMonthAsTemplatesMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     本月保存为模板
                   </Button>
-                }
-              >
-                <div className="space-y-3 pt-4">
+
                   <form
                     className="grid grid-cols-1 gap-3 md:grid-cols-6 lg:grid-cols-1"
                     onSubmit={(e) => {
@@ -464,7 +423,13 @@ export default function FinanceBudgets() {
                                 variant="secondary"
                                 size="sm"
                                 className="w-full sm:w-auto"
-                                onClick={() => upsertBudget({ category_id: t.category_id, category_name: t.category_name, amount: Number(t.amount) })}
+                                onClick={async () => {
+                                  try {
+                                    await upsertBudgetAsync({ category_id: t.category_id, category_name: t.category_name, amount: Number(t.amount) });
+                                  } catch {
+                                    return;
+                                  }
+                                }}
                               >
                                 用到本月
                               </Button>
@@ -474,7 +439,7 @@ export default function FinanceBudgets() {
                                 className="w-full sm:w-auto"
                                 disabled={isTemplateDeleting}
                                 onClick={() => {
-                                  if (window.confirm('确认删除该模板？')) deleteTemplate(t.id);
+                                  requestDeleteTemplate({ id: t.id, name: t.category_name });
                                 }}
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -494,8 +459,8 @@ export default function FinanceBudgets() {
                       <span>（预算汇总加载中…）</span>
                     ) : null}
                   </div>
-                </div>
-              </CollapsibleCard>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </PageSection>
@@ -506,7 +471,6 @@ export default function FinanceBudgets() {
         mode={budgetEditorMode}
         categories={budgetCategoryOptions}
         avgMonthlySpentByCategory={avgMonthlySpentByCategory}
-        recurringRecommendations={recurringRecommendations}
         initialValue={budgetEditorInitialValue}
         isSubmitting={isUpserting || isDeleting}
         onClose={closeBudgetEditor}
@@ -518,19 +482,80 @@ export default function FinanceBudgets() {
             return;
           }
         }}
-        onDelete={
+        onRequestDelete={
           budgetEditorMode === 'edit'
-            ? async (id) => {
-                try {
-                  await deleteBudgetAsync(id);
-                  closeBudgetEditor();
-                } catch {
-                  return;
-                }
+            ? (id) => {
+                const name = budgetEditorInitialValue?.category_name?.trim() || '该分类';
+                closeBudgetEditor();
+                requestDeleteBudget({ id, name });
               }
             : undefined
         }
       />
+
+      {confirmDeleteBudget && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={() => setConfirmDeleteBudget(null)}>
+          <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle>确认删除</CardTitle>
+                <CardDescription>将删除「{confirmDeleteBudget.name}」的本月预算配置。</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setConfirmDeleteBudget(null)} disabled={isDeleting}>
+                  取消
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  className="w-full sm:w-auto"
+                  disabled={isDeleting}
+                  onClick={async () => {
+                    try {
+                      await deleteBudgetAsync(confirmDeleteBudget.id);
+                      setConfirmDeleteBudget(null);
+                    } catch {
+                      return;
+                    }
+                  }}
+                >
+                  {isDeleting ? '删除中…' : '删除'}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteTemplate && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={() => setConfirmDeleteTemplate(null)}>
+          <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle>确认删除</CardTitle>
+                <CardDescription>将删除模板「{confirmDeleteTemplate.name}」。</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setConfirmDeleteTemplate(null)} disabled={isTemplateDeleting}>
+                  取消
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  className="w-full sm:w-auto"
+                  disabled={isTemplateDeleting}
+                  onClick={() => {
+                    deleteTemplate(confirmDeleteTemplate.id);
+                    setConfirmDeleteTemplate(null);
+                  }}
+                >
+                  {isTemplateDeleting ? '删除中…' : '删除'}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
     </Page>
   );
 }

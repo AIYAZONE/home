@@ -18,6 +18,7 @@ export interface RecurringTransaction {
   visibility: 'family' | 'private';
   amount: number;
   category: string;
+  category_id?: string | null;
   description: string | null;
   type: 'income' | 'expense';
   cadence: 'weekly' | 'monthly';

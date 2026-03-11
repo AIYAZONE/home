@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
+import { useCategories } from '@/hooks/useCategories';
 import { Budget, RecurringTransaction } from '@/types';
 import { Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
@@ -19,6 +20,7 @@ import { useToastStore } from '@/stores/toast';
 
 export default function FinanceRecurring() {
   const { data: profile, isLoading: isProfileLoading } = useProfile();
+  const { categories, isLoading: isCategoriesLoading, createCategoryAsync, isCreating: isCategoryCreating } = useCategories();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
   const toDateKey = (d: Date) => {
@@ -33,11 +35,33 @@ export default function FinanceRecurring() {
   const [formOwnerMode, setFormOwnerMode] = useState<'shared' | 'me'>('me');
   const [formAmount, setFormAmount] = useState('');
   const [formCategory, setFormCategory] = useState('');
+  const [forcedCategoryId, setForcedCategoryId] = useState<string | null>(null);
   const [formDescription, setFormDescription] = useState('');
   const [formType, setFormType] = useState<'income' | 'expense'>('expense');
   const [formCadence, setFormCadence] = useState<'weekly' | 'monthly'>('monthly');
-  const [formNextRunDate, setFormNextRunDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [formNextRunDate, setFormNextRunDate] = useState(() => toDateKey(new Date()));
   const [formActive, setFormActive] = useState(true);
+
+  const categoryNameById = useMemo(() => {
+    return new Map((categories ?? []).map((c) => [c.id, c.name] as const));
+  }, [categories]);
+
+  const categoryIdByName = useMemo(() => {
+    return new Map((categories ?? []).map((c) => [normalizeCategoryName(c.name), c.id] as const));
+  }, [categories]);
+
+  const resolveRecurringCategoryName = useCallback((r: RecurringTransaction) => {
+    const name = r.category_id ? categoryNameById.get(r.category_id) ?? r.category : r.category;
+    return normalizeCategoryName(name);
+  }, [categoryNameById]);
+
+  const normalizedFormCategory = useMemo(() => normalizeCategoryName(formCategory), [formCategory]);
+  const isCategoryInLibrary = useMemo(() => {
+    if (isCategoriesLoading) return true;
+    const key = normalizedFormCategory;
+    if (!key) return true;
+    return categoryIdByName.has(key);
+  }, [categoryIdByName, isCategoriesLoading, normalizedFormCategory]);
 
   const { data: recurringTransactions, isLoading } = useQuery({
     queryKey: ['recurring_transactions', profile?.family_id],
@@ -77,12 +101,12 @@ export default function FinanceRecurring() {
   });
 
   const budgetRecommendations = useMemo(() => {
-    const existing = new Set((recurringTransactions ?? []).map((r) => normalizeCategoryName(r.category)).filter(Boolean));
+    const existing = new Set((recurringTransactions ?? []).map((r) => resolveRecurringCategoryName(r)).filter(Boolean));
     return (currentMonthBudgets ?? [])
       .map((b) => ({ category: normalizeCategoryName(b.category_name), amount: Number(b.amount) }))
       .filter((b) => b.category && Number.isFinite(b.amount) && b.amount > 0 && !existing.has(b.category))
       .sort((a, b) => b.amount - a.amount);
-  }, [currentMonthBudgets, recurringTransactions]);
+  }, [currentMonthBudgets, recurringTransactions, resolveRecurringCategoryName]);
 
   const dueRecurringTransactions = useMemo(() => {
     const all = recurringTransactions ?? [];
@@ -102,6 +126,7 @@ export default function FinanceRecurring() {
     setFormOwnerMode('me');
     setFormAmount('');
     setFormCategory('');
+    setForcedCategoryId(null);
     setFormDescription('');
     setFormType('expense');
     setFormCadence('monthly');
@@ -119,7 +144,8 @@ export default function FinanceRecurring() {
     setFormVisibility(r.visibility);
     setFormOwnerMode(r.owner_user_id == null ? 'shared' : 'me');
     setFormAmount(String(r.amount));
-    setFormCategory(r.category);
+    setFormCategory(resolveRecurringCategoryName(r));
+    setForcedCategoryId(r.category_id ?? null);
     setFormDescription(r.description ?? '');
     setFormType(r.type);
     setFormCadence(r.cadence);
@@ -251,6 +277,7 @@ export default function FinanceRecurring() {
                     if (!profile?.family_id) return;
                     const owner_user_id =
                       formVisibility === 'private' ? profile.id : formOwnerMode === 'shared' ? null : profile.id;
+                    const category_id = forcedCategoryId ?? categoryIdByName.get(normalizedFormCategory) ?? null;
                     saveMutation.mutate({
                       id: editingId,
                       values: {
@@ -258,7 +285,8 @@ export default function FinanceRecurring() {
                         owner_user_id,
                         visibility: formVisibility,
                         amount: parseFloat(formAmount),
-                        category: formCategory.trim(),
+                        category: normalizedFormCategory,
+                        category_id,
                         description: formDescription.trim() ? formDescription.trim() : null,
                         type: formType,
                         cadence: formCadence,
@@ -356,7 +384,40 @@ export default function FinanceRecurring() {
 
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">分类</label>
-                      <Input type="text" required value={formCategory} onChange={(e) => setFormCategory(e.target.value)} placeholder="例如：物业费" />
+                      <Input
+                        type="text"
+                        required
+                        value={formCategory}
+                        onChange={(e) => {
+                          setFormCategory(e.target.value);
+                          setForcedCategoryId(null);
+                        }}
+                        placeholder="例如：物业费"
+                        list="recurring-category-options"
+                      />
+                      <datalist id="recurring-category-options">{(categories ?? []).map((c) => <option key={c.id} value={c.name} />)}</datalist>
+                      {!normalizedFormCategory || isCategoryInLibrary ? null : (
+                        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                          <div className="min-w-0 flex-1 truncate">该分类不在分类库中，可一键加入，后续录入更省事。</div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            disabled={isCategoryCreating}
+                            onClick={async () => {
+                              try {
+                                const created = await createCategoryAsync({ name: normalizedFormCategory, kind: formType });
+                                setFormCategory(created.name);
+                                setForcedCategoryId(created.id);
+                              } catch {
+                                return;
+                              }
+                            }}
+                          >
+                            加入分类库
+                          </Button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-1.5 md:col-span-2">
@@ -395,7 +456,7 @@ export default function FinanceRecurring() {
               <div key={r.id} className="flex items-center justify-between gap-3">
                 <div className="min-w-0 text-sm">
                   <div className="truncate">
-                    {r.category} · {formatMoney(r.type === 'income' ? r.amount : -r.amount, { signDisplay: 'always' })}
+                            {resolveRecurringCategoryName(r)} · {formatMoney(r.type === 'income' ? r.amount : -r.amount, { signDisplay: 'always' })}
                   </div>
                   <div className="text-xs opacity-80">到期日：{r.next_run_date}</div>
                 </div>
@@ -444,7 +505,7 @@ export default function FinanceRecurring() {
                 >
                   <div className="min-w-0">
                     <div className="flex min-w-0 items-center gap-2">
-                      <div className="truncate text-sm font-medium">{r.category}</div>
+                      <div className="truncate text-sm font-medium">{resolveRecurringCategoryName(r)}</div>
                       {r.visibility === 'private' ? <Badge variant="warning">私密</Badge> : null}
                       {r.visibility === 'family' && r.owner_user_id != null && r.owner_user_id !== profile?.id ? <Badge variant="default">只读</Badge> : null}
                       {!r.active ? <Badge variant="default">已暂停</Badge> : null}
