@@ -65,7 +65,9 @@ export function useCategories() {
     error: query.error,
     refetch: query.refetch,
     createCategory: createMutation.mutate,
+    createCategoryAsync: createMutation.mutateAsync,
     deleteCategory: deleteMutation.mutate,
+    deleteCategoryAsync: deleteMutation.mutateAsync,
     isCreating: createMutation.isPending,
     isDeleting: deleteMutation.isPending,
   };

@@ -25,7 +25,7 @@ export default function FinanceCategories() {
     <Page>
       <PageHeader>
         <PageTitle>分类管理</PageTitle>
-        <PageDescription>统一管理家庭分类，交易录入可快捷选择。</PageDescription>
+        <PageDescription>分类库用于快捷选择与推荐；预算/固定支出会尽量匹配分类库，历史记录仍以分类文本为准。</PageDescription>
       </PageHeader>
 
       <CategoryGuideCard
