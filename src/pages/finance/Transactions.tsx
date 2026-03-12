@@ -20,6 +20,7 @@ import { Select } from '@/components/ui/select';
 import { TransactionEditorModal } from '@/components/finance/TransactionEditorModal';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
+import { useConfirm } from '@/hooks/useConfirm';
 
 export default function FinanceTransactions() {
   const { data: profile, isLoading: isProfileLoading } = useProfile();
@@ -27,6 +28,7 @@ export default function FinanceTransactions() {
   const { categories } = useCategories();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
+  const { openConfirm, dialog } = useConfirm();
 
   const [isAddingOpen, setIsAddingOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -217,7 +219,17 @@ export default function FinanceTransactions() {
                     </div>
                     <div className="flex items-center gap-1 sm:justify-end">
                       <Button variant="ghost" size="sm" onClick={() => openEdit(transaction)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => { if (window.confirm('确认删除？')) deleteTransaction(transaction.id); }}><Trash2 className="h-4 w-4" /></Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={async () => {
+                          const ok = await openConfirm({ title: '确认删除', message: '确认删除这条交易吗？此操作不可撤销。', confirmText: '删除', tone: 'danger' });
+                          if (!ok) return;
+                          deleteTransaction(transaction.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </ListRowTrailing>
                 </ListRow>
@@ -226,6 +238,7 @@ export default function FinanceTransactions() {
           )}
         </CardContent>
       </Card>
+      {dialog}
     </Page>
   );
 }

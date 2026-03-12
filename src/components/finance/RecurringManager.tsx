@@ -11,11 +11,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { formatMoney } from '@/lib/format';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
+import { useConfirm } from '@/hooks/useConfirm';
 
 export default function RecurringManager() {
   const { data: profile } = useProfile();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
+  const { openConfirm, dialog } = useConfirm();
 
   const { data: recurringTransactions, isLoading } = useQuery({
     queryKey: ['recurring_transactions', profile?.family_id],
@@ -161,8 +163,13 @@ export default function RecurringManager() {
                       variant="ghost"
                       size="sm"
                       disabled={deleteMutation.isPending}
-                      onClick={() => {
-                        const ok = window.confirm(`确认删除固定项「${r.category}」吗？`);
+                      onClick={async () => {
+                        const ok = await openConfirm({
+                          title: '确认删除',
+                          message: `确认删除固定项「${r.category}」吗？`,
+                          confirmText: '删除',
+                          tone: 'danger',
+                        });
                         if (!ok) return;
                         deleteMutation.mutate(r.id);
                       }}
@@ -177,6 +184,7 @@ export default function RecurringManager() {
           </>
         )}
       </CardContent>
+      {dialog}
     </Card>
   );
 }

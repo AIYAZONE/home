@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { compareByLocale, formatMoney, formatPercent } from '@/lib/format';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
+import { useConfirm } from '@/hooks/useConfirm';
 
 interface BudgetManagerProps {
   transactions: Transaction[];
@@ -23,6 +24,7 @@ export default function BudgetManager({ transactions, monthStart, monthStartKey 
   const { data: profile } = useProfile();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
+  const { openConfirm, dialog } = useConfirm();
   const [budgetCategoryName, setBudgetCategoryName] = useState('');
   const [budgetAmount, setBudgetAmount] = useState('');
 
@@ -252,8 +254,13 @@ export default function BudgetManager({ transactions, monthStart, monthStartKey 
                         variant="ghost"
                         size="sm"
                         disabled={deleteMutation.isPending}
-                        onClick={() => {
-                          const ok = window.confirm(`确认删除「${b.category_name}」本月预算吗？`);
+                        onClick={async () => {
+                          const ok = await openConfirm({
+                            title: '确认删除',
+                            message: `确认删除「${b.category_name}」本月预算吗？`,
+                            confirmText: '删除',
+                            tone: 'danger',
+                          });
                           if (!ok) return;
                           deleteMutation.mutate(b.id);
                         }}
@@ -269,6 +276,7 @@ export default function BudgetManager({ transactions, monthStart, monthStartKey 
           </div>
         )}
       </CardContent>
+      {dialog}
     </Card>
   );
 }

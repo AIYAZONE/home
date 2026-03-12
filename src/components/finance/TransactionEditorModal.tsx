@@ -10,6 +10,7 @@ import { compareByLocale, formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useRecurringTransactions } from '@/hooks/useRecurringTransactions';
 import { Category, Transaction } from '@/types';
+import { useConfirm } from '@/hooks/useConfirm';
 
 type TransactionEditorMode = 'add' | 'edit';
 
@@ -50,6 +51,7 @@ export function TransactionEditorModal(props: {
   onClose: () => void;
   onSubmit: (payload: TransactionEditorSubmitPayload, options: { recurring: TransactionEditorRecurringPayload | null }) => void;
 }) {
+  const { openConfirm, dialog } = useConfirm();
   const navigate = useNavigate();
   const [visibility, setVisibility] = useState<'family' | 'private'>('family');
   const [amount, setAmount] = useState('');
@@ -128,9 +130,10 @@ export function TransactionEditorModal(props: {
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={props.onClose}>
-      <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-        <Card>
+    <>
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={props.onClose}>
+        <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+          <Card>
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -189,8 +192,12 @@ export function TransactionEditorModal(props: {
                           size="sm"
                           variant="primary"
                           disabled={isGenerating}
-                          onClick={() => {
-                            const ok = window.confirm(`确认生成「${r.category}」本期交易吗？`);
+                          onClick={async () => {
+                            const ok = await openConfirm({
+                              title: '确认生成',
+                              message: `确认生成「${r.category}」本期交易吗？`,
+                              confirmText: '生成',
+                            });
                             if (!ok) return;
                             generateRecurring(r.id);
                           }}
@@ -335,9 +342,10 @@ export function TransactionEditorModal(props: {
               </div>
             </form>
           </CardContent>
-        </Card>
+          </Card>
+        </div>
       </div>
-    </div>
+      {dialog}
+    </>
   );
 }
-

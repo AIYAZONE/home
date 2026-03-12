@@ -10,11 +10,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
+import { useConfirm } from '@/hooks/useConfirm';
 
 export default function CategoryManager() {
   const { data: profile } = useProfile();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
+  const { openConfirm, dialog } = useConfirm();
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryKind, setNewCategoryKind] = useState<'expense' | 'income' | 'both'>('expense');
 
@@ -133,8 +135,13 @@ export default function CategoryManager() {
                   variant="ghost"
                   size="sm"
                   disabled={deleteMutation.isPending}
-                  onClick={() => {
-                    const ok = window.confirm(`确认删除分类「${c.name}」吗？不会删除历史交易记录。`);
+                  onClick={async () => {
+                    const ok = await openConfirm({
+                      title: '确认删除',
+                      message: `确认删除分类「${c.name}」吗？不会删除历史交易记录。`,
+                      confirmText: '删除',
+                      tone: 'danger',
+                    });
                     if (!ok) return;
                     deleteMutation.mutate(c.id);
                   }}
@@ -146,6 +153,7 @@ export default function CategoryManager() {
             ))}
           </div>
         )}
+        {dialog}
       </CardContent>
     </Card>
   );

@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useBalanceSheet } from '@/hooks/useBalanceSheet';
 import { AssetsGuideCard } from '@/components/finance/AssetsGuideCard';
 import type { BalanceSheetItem } from '@/types';
+import { useConfirm } from '@/hooks/useConfirm';
 
 const kindLabel: Record<BalanceSheetItem['kind'], string> = {
   asset: '资产',
@@ -30,6 +31,7 @@ const defaultCategories = {
 
 export default function FinanceAssets() {
   const { items, fundAccounts, stats, isLoading, addItem, updateItem, deleteItem, isAdding, isUpdating, isDeleting } = useBalanceSheet();
+  const { openConfirm, dialog } = useConfirm();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [kind, setKind] = useState<BalanceSheetItem['kind']>('asset');
@@ -328,8 +330,10 @@ export default function FinanceAssets() {
                                     variant="ghost"
                                     size="sm"
                                     disabled={isDeleting}
-                                    onClick={() => {
-                                      if (window.confirm('确认删除该条目？')) deleteItem(item.id);
+                                    onClick={async () => {
+                                      const ok = await openConfirm({ title: '确认删除', message: '确认删除该条目？', confirmText: '删除', tone: 'danger' });
+                                      if (!ok) return;
+                                      deleteItem(item.id);
                                     }}
                                   >
                                     <Trash2 className="h-4 w-4" />
@@ -389,6 +393,7 @@ export default function FinanceAssets() {
           )}
         </CardContent>
       </Card>
+      {dialog}
     </Page>
   );
 }
