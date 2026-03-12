@@ -5,6 +5,7 @@ import { useMemberRemarks } from '@/hooks/useMemberRemarks';
 import { useProfile } from '@/hooks/useProfile';
 import { Loader2, User, Crown, Shield, Baby, Pencil, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatMemberSelectLabel } from '@/lib/member';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -57,9 +58,9 @@ export default function SettingsMembers() {
                 const roleCfg = roleConfig[member.role] || roleConfig.parent;
                 const RoleIcon = roleCfg.icon;
                 const canChangeRole = profile?.role === 'admin' && member.id !== profile.id;
-                  const remark = remarkByMemberId[member.id]?.remark_name?.trim() || '';
-                  const fallbackName = member.name || member.email?.split('@')[0] || 'Unknown';
-                  const displayName = remark || fallbackName;
+                const remark = remarkByMemberId[member.id]?.remark_name?.trim() || '';
+                const fallbackName = member.name || member.email?.split('@')[0] || 'Unknown';
+                const displayName = formatMemberSelectLabel(member, remarkByMemberId);
 
                 return (
                   <ListRow key={member.id}>

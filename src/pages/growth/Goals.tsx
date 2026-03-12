@@ -3,8 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
 import { useFamilyMembers } from '@/hooks/useFamilyMembers';
+import { useMemberRemarks } from '@/hooks/useMemberRemarks';
 import { GrowthGoal, GrowthKeyResult } from '@/types';
 import { Loader2, Plus, Target, Trash2, CheckCircle, Pause, ChevronDown } from 'lucide-react';
+import { formatMemberSelectLabel } from '@/lib/member';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,6 +20,7 @@ import { useToastStore } from '@/stores/toast';
 export default function GrowthGoals() {
   const { data: profile } = useProfile();
   const { members } = useFamilyMembers();
+  const { remarkByMemberId } = useMemberRemarks();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
   const [isAdding, setIsAdding] = useState(false);
@@ -49,9 +52,9 @@ export default function GrowthGoals() {
 
   const memberNameById = useMemo(() => {
     const map = new Map<string, string>();
-    (members ?? []).forEach((m) => map.set(m.id, m.name || m.email || m.id.slice(0, 6)));
+    (members ?? []).forEach((m) => map.set(m.id, formatMemberSelectLabel(m, remarkByMemberId)));
     return map;
-  }, [members]);
+  }, [members, remarkByMemberId]);
 
   const { data: goals, isLoading } = useQuery({
     queryKey: ['growth_goals', profile?.family_id, subjectFilter],
@@ -182,7 +185,7 @@ export default function GrowthGoals() {
                 <option value="all">全家</option>
                 {(members ?? []).map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name || m.email || m.id.slice(0, 6)}
+                    {formatMemberSelectLabel(m, remarkByMemberId)}
                   </option>
                 ))}
               </Select>
@@ -202,7 +205,7 @@ export default function GrowthGoals() {
                     <Select value={formSubjectUserId} onChange={(e) => setFormSubjectUserId(e.target.value)}>
                       {(members ?? []).map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.name || m.email || m.id.slice(0, 6)}
+                          {formatMemberSelectLabel(m, remarkByMemberId)}
                         </option>
                       ))}
                     </Select>

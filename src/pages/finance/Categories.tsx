@@ -8,12 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
 import { useNavigate } from 'react-router-dom';
 import { CategoryGuideCard } from '@/components/finance/CategoryGuideCard';
+import { useConfirm } from '@/hooks/useConfirm';
 
 export default function FinanceCategories() {
   const { categories, isLoading, createCategory, deleteCategory, isCreating, isDeleting } = useCategories();
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryKind, setNewCategoryKind] = useState<'expense' | 'income' | 'both'>('expense');
   const navigate = useNavigate();
+  const { openConfirm, dialog } = useConfirm();
 
   const hasFallbackCategory = useMemo(() => {
     return (categories ?? []).some((c) => c.name.trim() === '其他' && (c.kind === 'expense' || c.kind === 'both'));
@@ -71,13 +73,30 @@ export default function FinanceCategories() {
                     <div className="truncate text-sm font-medium">{c.name}</div>
                     <div className="mt-1"><Badge variant={c.kind === 'income' ? 'success' : c.kind === 'expense' ? 'danger' : 'default'}>{c.kind === 'income' ? '收入' : c.kind === 'expense' ? '支出' : '通用'}</Badge></div>
                   </div>
-                  <Button variant="ghost" size="sm" disabled={isDeleting} onClick={() => { if (window.confirm(`确认删除分类「${c.name}」吗？`)) deleteCategory(c.id); }}><Trash2 className="h-4 w-4" /></Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={isDeleting}
+                    onClick={async () => {
+                      const ok = await openConfirm({
+                        title: '确认删除',
+                        message: `确认删除分类「${c.name}」吗？`,
+                        confirmText: '删除',
+                        tone: 'danger',
+                      });
+                      if (!ok) return;
+                      deleteCategory(c.id);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+      {dialog}
     </Page>
   );
 }

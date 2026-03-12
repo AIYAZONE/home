@@ -17,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
+import { useConfirm } from '@/hooks/useConfirm';
 
 const fundKindConfig: Record<string, { 
   label: string; 
@@ -75,6 +76,7 @@ export default function FundManager() {
   const { data: profile } = useProfile();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
+  const { openConfirm, dialog } = useConfirm();
   const [isAdding, setIsAdding] = useState(false);
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [expandedGuide, setExpandedGuide] = useState(true);
@@ -650,8 +652,12 @@ export default function FundManager() {
                       size="sm"
                       variant="ghost"
                       disabled={pauseReachedRulesMutation.isPending}
-                      onClick={() => {
-                        const ok = window.confirm(`确认暂停 ${reachedRuleIds.length} 条已达标基金规则吗？`);
+                      onClick={async () => {
+                        const ok = await openConfirm({
+                          title: '确认暂停',
+                          message: `确认暂停 ${reachedRuleIds.length} 条已达标基金规则吗？`,
+                          confirmText: '暂停',
+                        });
                         if (!ok) return;
                         pauseReachedRulesMutation.mutate(reachedRuleIds);
                       }}
@@ -709,8 +715,8 @@ export default function FundManager() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => {
-                              const ok = window.confirm('确认删除该规则吗？');
+                            onClick={async () => {
+                              const ok = await openConfirm({ title: '确认删除', message: '确认删除该规则吗？', confirmText: '删除', tone: 'danger' });
                               if (!ok) return;
                               deleteRule(rule.id);
                             }}
@@ -877,8 +883,8 @@ export default function FundManager() {
                                     variant="ghost"
                                     size="sm"
                                     disabled={deleteFundMutation.isPending}
-                                    onClick={() => {
-                                      const ok = window.confirm(`确认删除「${fund.name}」吗？`);
+                                    onClick={async () => {
+                                      const ok = await openConfirm({ title: '确认删除', message: `确认删除「${fund.name}」吗？`, confirmText: '删除', tone: 'danger' });
                                       if (!ok) return;
                                       deleteFundMutation.mutate(fund.id);
                                     }}
@@ -1257,6 +1263,7 @@ export default function FundManager() {
             </div>,
             document.body,
           )}
+        {dialog}
       </CardContent>
     </Card>
   );

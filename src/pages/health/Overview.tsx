@@ -2,16 +2,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useProfile } from '@/hooks/useProfile';
 import { useFamilyMembers } from '@/hooks/useFamilyMembers';
+import { useMemberRemarks } from '@/hooks/useMemberRemarks';
 import { useHealthProfile } from '@/hooks/useHealthProfile';
 import { useHealthMetrics } from '@/hooks/useHealthMetrics';
 import { useInsurancePolicies } from '@/hooks/useInsurancePolicies';
 import { HealthMetric, InsurancePolicy } from '@/types';
+import { formatMemberSelectLabel } from '@/lib/member';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
 import { Select } from '@/components/ui/select';
+import { useConfirm } from '@/hooks/useConfirm';
 
 const metricConfig: Record<HealthMetric['metric_key'], { label: string; unit: string }> = {
   weight_kg: { label: '体重', unit: 'kg' },
@@ -31,6 +34,8 @@ const insuranceKindLabel: Record<InsurancePolicy['kind'], string> = {
 export default function HealthOverview() {
   const { data: profile } = useProfile();
   const { members } = useFamilyMembers();
+  const { remarkByMemberId } = useMemberRemarks();
+  const { openConfirm, dialog } = useConfirm();
 
   const isParentLike = profile?.role === 'admin' || profile?.role === 'parent';
   const [subjectUserId, setSubjectUserId] = useState<string>('');
@@ -47,8 +52,9 @@ export default function HealthOverview() {
 
   const memberName = useMemo(() => {
     const m = (members ?? []).find((x) => x.id === subjectUserId);
-    return m?.name || m?.email || (subjectUserId ? subjectUserId.slice(0, 6) : '');
-  }, [members, subjectUserId]);
+    if (!m) return subjectUserId ? subjectUserId.slice(0, 6) : '';
+    return formatMemberSelectLabel(m, remarkByMemberId);
+  }, [members, remarkByMemberId, subjectUserId]);
 
   const { profile: healthProfile, isLoading: isHealthProfileLoading, saveProfile, isSaving: isSavingProfile } = useHealthProfile(
     subjectUserId || null,
@@ -131,17 +137,21 @@ export default function HealthOverview() {
         </div>
         <PageActions>
           {isParentLike ? (
-            <div className="w-44">
-              <Select value={subjectUserId} onChange={(e) => setSubjectUserId(e.target.value)}>
-                {(members ?? []).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name || m.email || m.id.slice(0, 6)}
-                  </option>
-                ))}
-              </Select>
-            </div>
+            <Select
+              className="w-full sm:w-56"
+              aria-label="选择成员"
+              value={subjectUserId}
+              onChange={(e) => setSubjectUserId(e.target.value)}
+            >
+              {(members ?? []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {formatMemberSelectLabel(m, remarkByMemberId)}
+                </option>
+              ))}
+            </Select>
+          ) : subjectUserId ? (
+            <Badge variant="default">{memberName}</Badge>
           ) : null}
-          {subjectUserId ? <Badge variant="default">{memberName}</Badge> : null}
         </PageActions>
       </PageHeader>
 
@@ -298,8 +308,8 @@ export default function HealthOverview() {
                     size="sm"
                     variant="ghost"
                     disabled={isDeletingMetric}
-                    onClick={() => {
-                      const ok = window.confirm('确认删除这条指标记录吗？');
+                    onClick={async () => {
+                      const ok = await openConfirm({ title: '确认删除', message: '确认删除这条指标记录吗？', confirmText: '删除', tone: 'danger' });
                       if (!ok) return;
                       deleteMetric(m.id);
                     }}
@@ -344,8 +354,8 @@ export default function HealthOverview() {
                     size="sm"
                     variant="ghost"
                     disabled={isDeletingPolicy}
-                    onClick={() => {
-                      const ok = window.confirm('确认删除这条保险记录吗？');
+                    onClick={async () => {
+                      const ok = await openConfirm({ title: '确认删除', message: '确认删除这条保险记录吗？', confirmText: '删除', tone: 'danger' });
                       if (!ok) return;
                       deletePolicy(p.id);
                     }}
@@ -374,6 +384,7 @@ export default function HealthOverview() {
           </div>
         </CardContent>
       </Card>
+      {dialog}
     </Page>
   );
 }

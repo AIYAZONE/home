@@ -17,12 +17,14 @@ import { cn } from '@/lib/utils';
 import { toUserMessage } from '@/lib/error';
 import { normalizeCategoryName } from '@/lib/category';
 import { useToastStore } from '@/stores/toast';
+import { useConfirm } from '@/hooks/useConfirm';
 
 export default function FinanceRecurring() {
   const { data: profile, isLoading: isProfileLoading } = useProfile();
   const { categories, isLoading: isCategoriesLoading, createCategoryAsync, isCreating: isCategoryCreating } = useCategories();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
+  const { openConfirm, dialog } = useConfirm();
   const toDateKey = (d: Date) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -554,9 +556,14 @@ export default function FinanceRecurring() {
                       variant="ghost"
                       size="sm"
                       disabled={deleteMutation.isPending}
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
-                        const ok = window.confirm(`确认删除固定项「${r.category}」吗？`);
+                        const ok = await openConfirm({
+                          title: '确认删除',
+                          message: `确认删除固定项「${resolveRecurringCategoryName(r)}」吗？`,
+                          confirmText: '删除',
+                          tone: 'danger',
+                        });
                         if (!ok) return;
                         deleteMutation.mutate(r.id);
                       }}
@@ -571,6 +578,7 @@ export default function FinanceRecurring() {
           )}
         </CardContent>
       </Card>
+      {dialog}
     </Page>
   );
 }

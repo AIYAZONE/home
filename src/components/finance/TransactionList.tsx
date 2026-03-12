@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListRow, ListRowLeading, ListRowTrailing } from '@/components/ui/list-row';
 import { Pencil, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { useConfirm } from '@/hooks/useConfirm';
 
 interface TransactionListProps {
   transactions: Transaction[];
@@ -18,6 +19,8 @@ interface TransactionListProps {
 }
 
 export default function TransactionList({ transactions, isLoading, onEdit, onDelete, isDeleting }: TransactionListProps) {
+  const { openConfirm, dialog } = useConfirm();
+
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-3">
@@ -72,8 +75,8 @@ export default function TransactionList({ transactions, isLoading, onEdit, onDel
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        const ok = window.confirm('确认删除这条交易吗？此操作不可撤销。');
+                      onClick={async () => {
+                        const ok = await openConfirm({ title: '确认删除', message: '确认删除这条交易吗？此操作不可撤销。', confirmText: '删除', tone: 'danger' });
                         if (!ok) return;
                         onDelete(transaction.id);
                       }}
@@ -89,6 +92,7 @@ export default function TransactionList({ transactions, isLoading, onEdit, onDel
           </div>
         )}
       </CardContent>
+      {dialog}
     </Card>
   );
 }

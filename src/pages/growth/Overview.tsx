@@ -3,10 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
 import { useFamilyMembers } from '@/hooks/useFamilyMembers';
+import { useMemberRemarks } from '@/hooks/useMemberRemarks';
 import { GrowthGoal, GrowthKeyResult } from '@/types';
 import { Loader2, Plus, Target, Trash2, CheckCircle, Pause, XCircle, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatPercent } from '@/lib/format';
+import { formatMemberSelectLabel } from '@/lib/member';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,6 +18,7 @@ import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/com
 import { Select } from '@/components/ui/select';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
+import { useConfirm } from '@/hooks/useConfirm';
 
 const categoryConfig: Record<string, { label: string; color: string }> = {
   education: { label: '教育', color: 'text-blue-600 bg-blue-50 dark:bg-blue-950/30' },
@@ -36,6 +39,7 @@ const statusConfig: Record<string, { label: string; icon: typeof Target; color: 
 export default function GrowthOverview() {
   const { data: profile, isLoading: isProfileLoading } = useProfile();
   const { members } = useFamilyMembers();
+  const { remarkByMemberId } = useMemberRemarks();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
   const [isAdding, setIsAdding] = useState(false);
@@ -67,9 +71,9 @@ export default function GrowthOverview() {
 
   const memberNameById = useMemo(() => {
     const map = new Map<string, string>();
-    (members ?? []).forEach((m) => map.set(m.id, m.name || m.email || m.id.slice(0, 6)));
+    (members ?? []).forEach((m) => map.set(m.id, formatMemberSelectLabel(m, remarkByMemberId)));
     return map;
-  }, [members]);
+  }, [members, remarkByMemberId]);
 
   const { data: goals, isLoading: isGoalsLoading } = useQuery({
     queryKey: ['growth_goals', profile?.family_id, subjectFilter],
@@ -278,7 +282,7 @@ export default function GrowthOverview() {
                 <option value="all">全家</option>
                 {(members ?? []).map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name || m.email || m.id.slice(0, 6)}
+                    {formatMemberSelectLabel(m, remarkByMemberId)}
                   </option>
                 ))}
               </Select>
@@ -309,7 +313,7 @@ export default function GrowthOverview() {
                     >
                       {(members ?? []).map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.name || m.email || m.id.slice(0, 6)}
+                          {formatMemberSelectLabel(m, remarkByMemberId)}
                         </option>
                       ))}
                     </Select>
@@ -493,6 +497,7 @@ function GoalCard({
   isSavingKeyResult: boolean;
   isDeletingKeyResult: boolean;
 }) {
+  const { openConfirm, dialog } = useConfirm();
   const catCfg = categoryConfig[goal.category] || categoryConfig.other;
   const statusCfg = statusConfig[goal.status] || statusConfig.active;
   const StatusIcon = statusCfg.icon;
@@ -621,8 +626,8 @@ function GoalCard({
                           size="sm"
                           variant="ghost"
                           disabled={isDeletingKeyResult}
-                          onClick={() => {
-                            const ok = window.confirm(`确认删除关键结果「${kr.title}」吗？`);
+                          onClick={async () => {
+                            const ok = await openConfirm({ title: '确认删除', message: `确认删除关键结果「${kr.title}」吗？`, confirmText: '删除', tone: 'danger' });
                             if (!ok) return;
                             onDeleteKeyResult(kr.id);
                           }}
@@ -690,6 +695,7 @@ function GoalCard({
           </div>
         </CardContent>
       )}
+      {dialog}
     </Card>
   );
 }

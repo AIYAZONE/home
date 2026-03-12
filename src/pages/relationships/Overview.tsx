@@ -1,19 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useProfile } from '@/hooks/useProfile';
 import { useFamilyMembers } from '@/hooks/useFamilyMembers';
+import { useMemberRemarks } from '@/hooks/useMemberRemarks';
 import { useRelationshipEvents } from '@/hooks/useRelationshipEvents';
 import { useExternalContacts } from '@/hooks/useExternalContacts';
 import { useContactInteractions } from '@/hooks/useContactInteractions';
+import { formatMemberSelectLabel } from '@/lib/member';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
 import { Select } from '@/components/ui/select';
+import { useConfirm } from '@/hooks/useConfirm';
 
 export default function RelationshipsOverview() {
   const { data: profile } = useProfile();
   const { members } = useFamilyMembers();
+  const { remarkByMemberId } = useMemberRemarks();
+  const { openConfirm, dialog } = useConfirm();
 
   const isParentLike = profile?.role === 'admin' || profile?.role === 'parent';
   const [participantFilter, setParticipantFilter] = useState<'all' | string>('all');
@@ -32,9 +37,9 @@ export default function RelationshipsOverview() {
 
   const memberNameById = useMemo(() => {
     const map = new Map<string, string>();
-    (members ?? []).forEach((m) => map.set(m.id, m.name || m.email || m.id.slice(0, 6)));
+    (members ?? []).forEach((m) => map.set(m.id, formatMemberSelectLabel(m, remarkByMemberId)));
     return map;
-  }, [members]);
+  }, [members, remarkByMemberId]);
 
   const { events, isLoading: isEventsLoading, addEvent, deleteEvent, isAdding: isAddingEvent, isDeleting: isDeletingEvent } =
     useRelationshipEvents();
@@ -104,7 +109,7 @@ export default function RelationshipsOverview() {
                 <option value="all">全家</option>
                 {(members ?? []).map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name || m.email || m.id.slice(0, 6)}
+                    {formatMemberSelectLabel(m, remarkByMemberId)}
                   </option>
                 ))}
               </Select>
@@ -136,7 +141,7 @@ export default function RelationshipsOverview() {
                   <option value="all">全家</option>
                   {(members ?? []).map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.name || m.email || m.id.slice(0, 6)}
+                      {formatMemberSelectLabel(m, remarkByMemberId)}
                     </option>
                   ))}
                 </Select>
@@ -208,8 +213,8 @@ export default function RelationshipsOverview() {
                     size="sm"
                     variant="ghost"
                     disabled={isDeletingEvent}
-                    onClick={() => {
-                      const ok = window.confirm('确认删除这条事件记录吗？');
+                    onClick={async () => {
+                      const ok = await openConfirm({ title: '确认删除', message: '确认删除这条事件记录吗？', confirmText: '删除', tone: 'danger' });
                       if (!ok) return;
                       deleteEvent(e.id);
                     }}
@@ -294,8 +299,8 @@ export default function RelationshipsOverview() {
                       size="sm"
                       variant="ghost"
                       disabled={isDeletingContact}
-                      onClick={() => {
-                        const ok = window.confirm('确认删除该联系人吗？相关互动记录也会删除。');
+                      onClick={async () => {
+                        const ok = await openConfirm({ title: '确认删除', message: '确认删除该联系人吗？相关互动记录也会删除。', confirmText: '删除', tone: 'danger' });
                         if (!ok) return;
                         deleteContact(c.id);
                         if (selectedContactId === c.id) setSelectedContactId('');
@@ -386,8 +391,8 @@ export default function RelationshipsOverview() {
                     size="sm"
                     variant="ghost"
                     disabled={isDeletingInteraction}
-                    onClick={() => {
-                      const ok = window.confirm('确认删除这条互动记录吗？');
+                    onClick={async () => {
+                      const ok = await openConfirm({ title: '确认删除', message: '确认删除这条互动记录吗？', confirmText: '删除', tone: 'danger' });
                       if (!ok) return;
                       deleteInteraction(it.id);
                     }}
@@ -400,6 +405,7 @@ export default function RelationshipsOverview() {
           )}
         </CardContent>
       </Card>
+      {dialog}
     </Page>
   );
 }

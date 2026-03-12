@@ -159,38 +159,6 @@ export default function FinanceOverview() {
     };
   }, [allocationPrompt, closeAllocationPrompt]);
 
-  if (isProfileLoading) {
-    return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
-  }
-
-  if (!profile?.family_id) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>需要先完成家庭设置</CardTitle>
-            <CardDescription>创建或加入家庭后，才能开始记录交易。</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button className="w-full" onClick={() => navigate('/family/setup')}>
-              前往家庭设置
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const monthIncome = (transactions ?? [])
-    .filter((t) => t.type === 'income' && new Date(t.date) >= monthStart)
-    .reduce((acc, curr) => acc + curr.amount, 0) || 0;
-
-  const monthExpense = (transactions ?? [])
-    .filter((t) => t.type === 'expense' && new Date(t.date) >= monthStart)
-    .reduce((acc, curr) => acc + curr.amount, 0) || 0;
-
-  const balance = monthIncome - monthExpense;
-
   const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const upcomingKey = useMemo(() => {
     const d = new Date();
@@ -261,7 +229,10 @@ export default function FinanceOverview() {
     return computeBudgetMetrics({ budgets: budgets ?? [], transactions: transactions ?? [], monthStart });
   }, [budgets, transactions, monthStart]);
 
-  const topUnbudgeted = useMemo(() => topEntries(monthBudgetMetrics.unbudgetedByCategory, 3), [monthBudgetMetrics.unbudgetedByCategory]);
+  const topUnbudgeted = useMemo(
+    () => topEntries(monthBudgetMetrics.unbudgetedByCategory, 3),
+    [monthBudgetMetrics.unbudgetedByCategory],
+  );
 
   const recentTransactions = useMemo(() => (transactions ?? []).slice(0, 8), [transactions]);
 
@@ -289,6 +260,38 @@ export default function FinanceOverview() {
   }, [transactions, trendMonths]);
 
   const hasTransactions = (transactions?.length ?? 0) > 0;
+
+  if (isProfileLoading) {
+    return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
+  }
+
+  if (!profile?.family_id) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>需要先完成家庭设置</CardTitle>
+            <CardDescription>创建或加入家庭后，才能开始记录交易。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button className="w-full" onClick={() => navigate('/family/setup')}>
+              前往家庭设置
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const monthIncome = (transactions ?? [])
+    .filter((t) => t.type === 'income' && new Date(t.date) >= monthStart)
+    .reduce((acc, curr) => acc + curr.amount, 0) || 0;
+
+  const monthExpense = (transactions ?? [])
+    .filter((t) => t.type === 'expense' && new Date(t.date) >= monthStart)
+    .reduce((acc, curr) => acc + curr.amount, 0) || 0;
+
+  const balance = monthIncome - monthExpense;
 
   const maybeOpenAllocationPrompt = async (created: Transaction) => {
     if (created.type !== 'income') return;
