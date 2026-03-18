@@ -4,8 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
 import { AllocationRule, Category, FundAccount, RecurringTransaction, Transaction } from '@/types';
-import { Link, useNavigate } from 'react-router-dom';
-import { BarChart3, DollarSign, Loader2, Plus, TrendingDown, TrendingUp, X, Receipt, PiggyBank, Repeat } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { BarChart3, ChevronLeft, ChevronRight, DollarSign, Loader2, Plus, TrendingDown, TrendingUp, X, Receipt, PiggyBank, Repeat } from 'lucide-react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { formatMoney, formatPercent } from '@/lib/format';
 import { isFundReachedTarget } from '@/lib/fund';
@@ -14,6 +14,7 @@ import { normalizeCategoryName } from '@/lib/category';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CollapsibleCard } from '@/components/ui/collapsible-card';
+import { Input } from '@/components/ui/input';
 import { MetricCard } from '@/components/ui/metric-card';
 import { ListRow, ListRowLeading, ListRowTrailing } from '@/components/ui/list-row';
 import { Page, PageActions, PageBody, PageDescription, PageHeader, PageSection, PageTitle } from '@/components/ui/page';
@@ -21,7 +22,7 @@ import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
 import { TransactionEditorModal } from '@/components/finance/TransactionEditorModal';
 import { useBudgets } from '@/hooks/useBudgets';
-import { computeBudgetMetrics, toMonthStartKey, topEntries } from '@/lib/budget';
+import { addMonths, computeBudgetMetrics, parseMonthStartKey, toMonthStartKey, topEntries } from '@/lib/budget';
 
 const quickLinks = [
   { name: '交易记录', href: '/finance/transactions', icon: Receipt, description: '查看和管理所有交易' },
@@ -34,9 +35,14 @@ export default function FinanceOverview() {
   const { data: profile, isLoading: isProfileLoading } = useProfile();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const pushToast = useToastStore((s) => s.push);
   const [isAdding, setIsAdding] = useState(false);
-  const [summaryMode, setSummaryMode] = useState<'month' | 'quarter' | 'year'>('month');
+  const [summaryMode, setSummaryMode] = useState<'month' | 'quarter' | 'year'>(() => {
+    const raw = searchParams.get('mode');
+    if (raw === 'month' || raw === 'quarter' || raw === 'year') return raw;
+    return 'month';
+  });
   const pendingRecurringRef = useRef<null | Omit<RecurringTransaction, 'id' | 'created_at' | 'updated_at'>>(null);
   const [allocationPrompt, setAllocationPrompt] = useState<null | {
     transaction: Transaction;
@@ -46,12 +52,47 @@ export default function FinanceOverview() {
   }>(null);
   const [isApplyingAllocation, setIsApplyingAllocation] = useState(false);
 
-  const monthStart = useMemo(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  }, []);
+  const nowMonthStart = useMemo(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1), []);
 
-  const monthStartKey = useMemo(() => toMonthStartKey(monthStart), [monthStart]);
+  const normalizeMonthValue = useCallback(
+    (raw: string | null) => {
+      const fallback = toMonthStartKey(nowMonthStart).slice(0, 7);
+      if (!raw) return fallback;
+      if (!/^\d{4}-\d{2}$/.test(raw)) return fallback;
+      const mm = Number(raw.slice(5, 7));
+      if (!Number.isFinite(mm) || mm < 1 || mm > 12) return fallback;
+      return raw;
+    },
+    [nowMonthStart],
+  );
+
+  const [monthValue, setMonthValue] = useState(() => normalizeMonthValue(searchParams.get('month')));
+
+  const minMonthValue = useMemo(() => toMonthStartKey(addMonths(nowMonthStart, -36)).slice(0, 7), [nowMonthStart]);
+  const maxMonthValue = useMemo(() => toMonthStartKey(nowMonthStart).slice(0, 7), [nowMonthStart]);
+
+  useEffect(() => {
+    const nextMode = searchParams.get('mode');
+    if (nextMode === 'month' || nextMode === 'quarter' || nextMode === 'year') {
+      setSummaryMode((prev) => (prev === nextMode ? prev : nextMode));
+    }
+
+    const nextMonth = normalizeMonthValue(searchParams.get('month'));
+    const clamped =
+      nextMonth < minMonthValue ? minMonthValue : nextMonth > maxMonthValue ? maxMonthValue : nextMonth;
+    setMonthValue((prev) => (prev === clamped ? prev : clamped));
+  }, [maxMonthValue, minMonthValue, normalizeMonthValue, searchParams]);
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (next.get('mode') !== summaryMode) next.set('mode', summaryMode);
+    if (next.get('month') !== monthValue) next.set('month', monthValue);
+    if (String(next) === String(searchParams)) return;
+    setSearchParams(next, { replace: true });
+  }, [monthValue, searchParams, setSearchParams, summaryMode]);
+
+  const monthStartKey = useMemo(() => `${monthValue}-01`, [monthValue]);
+  const monthStart = useMemo(() => parseMonthStartKey(monthStartKey), [monthStartKey]);
 
   const {
     budgets,
@@ -60,12 +101,26 @@ export default function FinanceOverview() {
     isEnsuring: isEnsuringBudgets,
   } = useBudgets(monthStartKey);
 
+  const monthsBack = useMemo(() => {
+    const y = monthStart.getFullYear();
+    const periodStart =
+      summaryMode === 'year'
+        ? new Date(y, 0, 1)
+        : summaryMode === 'quarter'
+          ? new Date(y, Math.floor(monthStart.getMonth() / 3) * 3, 1)
+          : new Date(y, monthStart.getMonth(), 1);
+    const trendStart = addMonths(monthStart, -5);
+    const start = trendStart < periodStart ? trendStart : periodStart;
+    const diff = (nowMonthStart.getFullYear() - start.getFullYear()) * 12 + (nowMonthStart.getMonth() - start.getMonth());
+    const base = Math.max(6, diff + 2);
+    return Math.min(36, Math.max(6, base));
+  }, [monthStart, nowMonthStart, summaryMode]);
+
   const { data: transactions } = useQuery({
-    queryKey: ['transactions', profile?.family_id],
+    queryKey: ['transactions', profile?.family_id, monthsBack],
     queryFn: async () => {
       if (!profile?.family_id) return [];
-      const from = new Date();
-      from.setMonth(from.getMonth() - 6);
+      const from = addMonths(nowMonthStart, -monthsBack);
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
@@ -203,6 +258,23 @@ export default function FinanceOverview() {
     return { start, end, label: `${y}年${String(monthStart.getMonth() + 1).padStart(2, '0')}月` };
   }, [monthStart, summaryMode]);
 
+  const periodDeltaMonths = useMemo(() => (summaryMode === 'month' ? 1 : summaryMode === 'quarter' ? 3 : 12), [summaryMode]);
+
+  const prevMonthValue = useMemo(() => toMonthStartKey(addMonths(monthStart, -periodDeltaMonths)).slice(0, 7), [monthStart, periodDeltaMonths]);
+  const nextMonthValue = useMemo(() => toMonthStartKey(addMonths(monthStart, periodDeltaMonths)).slice(0, 7), [monthStart, periodDeltaMonths]);
+  const canGoPrev = prevMonthValue >= minMonthValue;
+  const canGoNext = nextMonthValue <= maxMonthValue;
+
+  const goPrevPeriod = useCallback(() => {
+    if (!canGoPrev) return;
+    setMonthValue(prevMonthValue);
+  }, [canGoPrev, prevMonthValue]);
+
+  const goNextPeriod = useCallback(() => {
+    if (!canGoNext) return;
+    setMonthValue(nextMonthValue);
+  }, [canGoNext, nextMonthValue]);
+
   const summaryIncome = useMemo(() => {
     return (transactions ?? [])
       .filter((t) => t.type === 'income')
@@ -236,21 +308,17 @@ export default function FinanceOverview() {
 
   const recentTransactions = useMemo(() => (transactions ?? []).slice(0, 8), [transactions]);
 
-  const trendMonths = useMemo(() => {
-    const base = new Date();
-    base.setDate(1);
-    return Array.from({ length: 6 }).map((_, i) => new Date(base.getFullYear(), base.getMonth() - (5 - i), 1));
-  }, []);
+  const trendMonths = useMemo(() => Array.from({ length: 6 }).map((_, i) => addMonths(monthStart, -(5 - i))), [monthStart]);
 
   const trendData = useMemo(() => {
     const index = new Map<string, { month: string; income: number; expense: number }>();
     for (const m of trendMonths) {
-      const key = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`;
-      index.set(key, { month: `${m.getMonth() + 1}月`, income: 0, expense: 0 });
+      const key = toMonthStartKey(m).slice(0, 7);
+      index.set(key, { month: key, income: 0, expense: 0 });
     }
     for (const t of transactions ?? []) {
       const d = new Date(t.date);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const key = toMonthStartKey(new Date(d.getFullYear(), d.getMonth(), 1)).slice(0, 7);
       const bucket = index.get(key);
       if (!bucket) continue;
       if (t.type === 'income') bucket.income += Number(t.amount);
@@ -282,16 +350,6 @@ export default function FinanceOverview() {
       </div>
     );
   }
-
-  const monthIncome = (transactions ?? [])
-    .filter((t) => t.type === 'income' && new Date(t.date) >= monthStart)
-    .reduce((acc, curr) => acc + curr.amount, 0) || 0;
-
-  const monthExpense = (transactions ?? [])
-    .filter((t) => t.type === 'expense' && new Date(t.date) >= monthStart)
-    .reduce((acc, curr) => acc + curr.amount, 0) || 0;
-
-  const balance = monthIncome - monthExpense;
 
   const maybeOpenAllocationPrompt = async (created: Transaction) => {
     if (created.type !== 'income') return;
@@ -454,7 +512,7 @@ export default function FinanceOverview() {
           </Button>
           <Button variant="secondary" disabled={isEnsuringBudgets} onClick={() => ensureMonthBudgets()}>
             {isEnsuringBudgets ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            补齐本月预算
+            补齐所选月预算
           </Button>
           <Button variant="secondary" onClick={() => navigate('/finance/transactions')}>
             查看交易
@@ -488,10 +546,34 @@ export default function FinanceOverview() {
         <PageSection>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm font-medium text-foreground">{period.label}汇总</div>
-            <div className="flex w-full gap-2 sm:w-auto">
-              <Button className="flex-1 sm:flex-none" size="sm" variant={summaryMode === 'month' ? 'primary' : 'secondary'} onClick={() => setSummaryMode('month')}>月度</Button>
-              <Button className="flex-1 sm:flex-none" size="sm" variant={summaryMode === 'quarter' ? 'primary' : 'secondary'} onClick={() => setSummaryMode('quarter')}>季度</Button>
-              <Button className="flex-1 sm:flex-none" size="sm" variant={summaryMode === 'year' ? 'primary' : 'secondary'} onClick={() => setSummaryMode('year')}>年度</Button>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <div className="flex w-full gap-2 sm:w-auto">
+                <Button size="sm" variant="secondary" onClick={goPrevPeriod} disabled={!canGoPrev}>
+                  <ChevronLeft className="h-4 w-4" />
+                  上期
+                </Button>
+                <Input
+                  type="month"
+                  value={monthValue}
+                  min={minMonthValue}
+                  max={maxMonthValue}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v) setMonthValue(v);
+                  }}
+                  className="w-full sm:w-[160px]"
+                />
+                <Button size="sm" variant="secondary" onClick={goNextPeriod} disabled={!canGoNext}>
+                  下期
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="flex w-full gap-2 sm:w-auto">
+                <Button className="flex-1 sm:flex-none" size="sm" variant={summaryMode === 'month' ? 'primary' : 'secondary'} onClick={() => setSummaryMode('month')}>月度</Button>
+                <Button className="flex-1 sm:flex-none" size="sm" variant={summaryMode === 'quarter' ? 'primary' : 'secondary'} onClick={() => setSummaryMode('quarter')}>季度</Button>
+                <Button className="flex-1 sm:flex-none" size="sm" variant={summaryMode === 'year' ? 'primary' : 'secondary'} onClick={() => setSummaryMode('year')}>年度</Button>
+              </div>
             </div>
           </div>
 
@@ -509,7 +591,7 @@ export default function FinanceOverview() {
             <MetricCard label="结余" value={formatMoney(summaryBalance)} right={<DollarSign className="h-5 w-5 text-primary" />} />
             <MetricCard
               tone={(budgets?.length ?? 0) > 0 ? (monthBudgetMetrics.executionRatio >= 1 ? 'danger' : monthBudgetMetrics.executionRatio >= 0.8 ? 'warning' : 'success') : 'default'}
-              label="预算健康（本月）"
+              label="预算健康（所选月）"
               value={
                 isBudgetsLoading
                   ? '—'
@@ -655,7 +737,7 @@ export default function FinanceOverview() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <CardTitle>趋势</CardTitle>
-                    <CardDescription>近 6 个月收入与支出趋势。</CardDescription>
+                    <CardDescription>截至所选月份的近 6 个月收入与支出趋势。</CardDescription>
                   </div>
                 </div>
               </CardHeader>

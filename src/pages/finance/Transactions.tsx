@@ -5,7 +5,7 @@ import { useProfile } from '@/hooks/useProfile';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useCategories } from '@/hooks/useCategories';
 import { Transaction } from '@/types';
-import { Loader2, Pencil, Plus, Search, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { Loader2, Pencil, Plus, Search, Trash2, TrendingDown, TrendingUp, Upload } from 'lucide-react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { formatMoney } from '@/lib/format';
@@ -18,6 +18,7 @@ import { ListRow, ListRowLeading, ListRowTrailing } from '@/components/ui/list-r
 import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
 import { Select } from '@/components/ui/select';
 import { TransactionEditorModal } from '@/components/finance/TransactionEditorModal';
+import { TransactionImportModal } from '@/components/finance/TransactionImportModal';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -34,6 +35,7 @@ export default function FinanceTransactions() {
   const [isEditing, setIsEditing] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [isSavingRecurring, setIsSavingRecurring] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   const [keyword, setKeyword] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
@@ -82,50 +84,15 @@ export default function FinanceTransactions() {
   if (isProfileLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
 
   return (
-    <Page>
+    <Page className="space-y-6 lg:space-y-5">
       <PageHeader>
         <PageTitle>交易记录</PageTitle>
         <PageDescription>查看和管理所有交易记录。</PageDescription>
         <PageActions>
+          <Button variant="secondary" onClick={() => setIsImportOpen(true)}><Upload className="h-4 w-4" />导入账单</Button>
           <Button onClick={() => (isAddingOpen || isEditing ? closeEditor() : openAdd())}><Plus className="h-4 w-4" />记一笔</Button>
         </PageActions>
       </PageHeader>
-
-      <Card>
-        <CardHeader className="pb-3"><CardTitle>筛选</CardTitle></CardHeader>
-        <CardContent className="pt-0">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            <div className="space-y-1.5 md:col-span-2">
-              <label className="text-sm font-medium">关键词</label>
-              <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="金额、分类、备注…" className="pl-9" /></div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">时间</label>
-              <Select value={filterPreset} onChange={(e) => setFilterPreset(e.target.value as any)}>
-                <option value="30d">近 30 天</option>
-                <option value="thisMonth">本月</option>
-                <option value="all">全部</option>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">类型</label>
-              <Select value={filterType} onChange={(e) => setFilterType(e.target.value as any)}>
-                <option value="all">全部</option>
-                <option value="expense">支出</option>
-                <option value="income">收入</option>
-              </Select>
-            </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <label className="text-sm font-medium">分类</label>
-              <Input value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} placeholder="例如：餐饮" list="filter-category-options" />
-              <datalist id="filter-category-options">{(categories ?? []).map((c) => <option key={c.id} value={c.name} />)}</datalist>
-            </div>
-            <div className="flex md:items-end md:col-span-2">
-              <Button variant="secondary" className="w-full" onClick={() => { setKeyword(''); setFilterType('all'); setFilterCategory(''); setFilterPreset('30d'); }}>重置筛选</Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       <TransactionEditorModal
         open={isAddingOpen || isEditing}
@@ -194,50 +161,117 @@ export default function FinanceTransactions() {
         }}
       />
 
-      <Card className="overflow-hidden">
-        <CardHeader className="pb-3"><CardTitle>最近交易</CardTitle><CardDescription>当前显示 {filteredTransactions.length} 条记录。</CardDescription></CardHeader>
-        <CardContent className="pt-0">
-          {isTransactionsLoading ? <div className="py-10 text-center text-sm text-muted-foreground">加载中…</div> : filteredTransactions.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">暂无交易记录</div> : (
-            <div className="divide-y divide-border rounded-xl border border-border">
-              {filteredTransactions.map((transaction) => (
-                <ListRow key={transaction.id}>
-                  <ListRowLeading>
-                    <div className={cn('grid h-9 w-9 place-items-center rounded-xl', transaction.type === 'income' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-rose-500/10 text-rose-700')}>
-                      {transaction.type === 'income' ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-2"><div className="truncate text-sm font-medium">{transaction.category}</div>{transaction.visibility === 'private' ? <Badge variant="warning">私密</Badge> : null}</div>
-                      <div className="truncate text-xs text-muted-foreground">{format(new Date(transaction.date), 'PPP', { locale: zhCN })}</div>
-                    </div>
-                  </ListRowLeading>
-                  <ListRowTrailing className="sm:justify-end">
-                    <div className="sm:text-right">
-                      <div className={cn('text-sm font-semibold', transaction.type === 'income' ? 'text-emerald-600' : '')}>
-                        {formatMoney(transaction.type === 'income' ? transaction.amount : -transaction.amount, { signDisplay: 'always' })}
-                      </div>
-                      {transaction.description && <div className="text-xs text-muted-foreground">{transaction.description}</div>}
-                    </div>
-                    <div className="flex items-center gap-1 sm:justify-end">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(transaction)}><Pencil className="h-4 w-4" /></Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={async () => {
-                          const ok = await openConfirm({ title: '确认删除', message: '确认删除这条交易吗？此操作不可撤销。', confirmText: '删除', tone: 'danger' });
-                          if (!ok) return;
-                          deleteTransaction(transaction.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </ListRowTrailing>
-                </ListRow>
-              ))}
+      <TransactionImportModal
+        open={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        transactions={transactions}
+        categories={categories}
+      />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <Card className="lg:col-span-4 lg:sticky lg:top-4 lg:self-start">
+          <CardHeader className="pb-3"><CardTitle>筛选</CardTitle></CardHeader>
+          <CardContent className="pt-0 sm:px-4 sm:pb-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+              <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+                <label className="text-sm font-medium">关键词</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="金额、分类、备注…" className="pl-9" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">时间</label>
+                <Select value={filterPreset} onChange={(e) => setFilterPreset(e.target.value as any)}>
+                  <option value="30d">近 30 天</option>
+                  <option value="thisMonth">本月</option>
+                  <option value="all">全部</option>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">类型</label>
+                <Select value={filterType} onChange={(e) => setFilterType(e.target.value as any)}>
+                  <option value="all">全部</option>
+                  <option value="expense">支出</option>
+                  <option value="income">收入</option>
+                </Select>
+              </div>
+              <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+                <label className="text-sm font-medium">分类</label>
+                <Input value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} placeholder="例如：餐饮" list="filter-category-options" />
+                <datalist id="filter-category-options">{(categories ?? []).map((c) => <option key={c.id} value={c.name} />)}</datalist>
+              </div>
+              <div className="flex sm:col-span-2 lg:col-span-1">
+                <Button variant="secondary" className="w-full" onClick={() => { setKeyword(''); setFilterType('all'); setFilterCategory(''); setFilterPreset('30d'); }}>重置筛选</Button>
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden lg:col-span-8">
+          <CardHeader className="pb-2">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <CardTitle>最近交易</CardTitle>
+                <CardDescription>当前显示 {filteredTransactions.length} 条记录。</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 sm:px-4 sm:pb-4">
+            {isTransactionsLoading ? <div className="py-10 text-center text-sm text-muted-foreground">加载中…</div> : filteredTransactions.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">暂无交易记录</div> : (
+              <div className="divide-y divide-border rounded-xl border border-border">
+                {filteredTransactions.map((transaction) => (
+                  <ListRow
+                    key={transaction.id}
+                    className="py-4 lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_240px] lg:items-center lg:gap-3 lg:px-3 lg:py-2"
+                  >
+                    <ListRowLeading>
+                      <div className={cn('grid h-9 w-9 place-items-center rounded-xl lg:h-8 lg:w-8', transaction.type === 'income' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-rose-500/10 text-rose-700')}>
+                        {transaction.type === 'income' ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="truncate text-sm font-medium">{transaction.category}</div>
+                          {transaction.visibility === 'private' ? <Badge variant="warning">私密</Badge> : null}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground lg:hidden">{format(new Date(transaction.date), 'PPP', { locale: zhCN })}</div>
+                      </div>
+                    </ListRowLeading>
+
+                    <div className="hidden min-w-0 lg:block">
+                      <div className="truncate text-sm text-muted-foreground">{format(new Date(transaction.date), 'PPP', { locale: zhCN })}</div>
+                      <div className="truncate text-sm text-muted-foreground">{transaction.description || '—'}</div>
+                    </div>
+
+                    <ListRowTrailing className="sm:justify-end lg:flex-row lg:items-center lg:gap-2">
+                      <div className="sm:text-right">
+                        <div className={cn('text-sm font-semibold tabular-nums', transaction.type === 'income' ? 'text-emerald-600' : '')}>
+                          {formatMoney(transaction.type === 'income' ? transaction.amount : -transaction.amount, { signDisplay: 'always' })}
+                        </div>
+                        {transaction.description && <div className="text-xs text-muted-foreground lg:hidden">{transaction.description}</div>}
+                      </div>
+                      <div className="flex items-center gap-1 sm:justify-end">
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(transaction)}><Pencil className="h-4 w-4" /></Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={async () => {
+                            const ok = await openConfirm({ title: '确认删除', message: '确认删除这条交易吗？此操作不可撤销。', confirmText: '删除', tone: 'danger' });
+                            if (!ok) return;
+                            deleteTransaction(transaction.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </ListRowTrailing>
+                  </ListRow>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
       {dialog}
     </Page>
   );
