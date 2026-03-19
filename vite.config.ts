@@ -112,6 +112,12 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           navigateFallback: '/index.html',
+          navigateFallbackDenylist: [
+            /^\/assets\//,
+            /^\/api\//,
+            /\/[^/?]+\.[^/]+$/,
+          ],
+          cleanupOutdatedCaches: true,
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/css2/i,
