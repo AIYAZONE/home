@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { authAdminDeleteUser, authGetUser } from '../_lib/supabaseAuthCompat';
 
 type RequestLike = {
   method?: string;
@@ -62,7 +63,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
-  const { data: userData, error: userError } = await anonClient.auth.getUser(token);
+  const { data: userData, error: userError } = await authGetUser(anonClient, token);
   if (userError || !userData.user) {
     return res.status(401).json({ message: '未登录或登录已过期，请重新登录。' });
   }
@@ -88,11 +89,10 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
-  const { error: deleteError } = await adminClient.auth.admin.deleteUser(userData.user.id);
+  const { error: deleteError } = await authAdminDeleteUser(adminClient, userData.user.id);
   if (deleteError) {
     return res.status(500).json({ message: '注销失败，请稍后再试。' });
   }
 
   return res.status(200).json({ ok: true });
 }
-
