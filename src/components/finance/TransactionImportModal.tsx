@@ -24,13 +24,11 @@ type MappingDraft = {
   typeKey: string | null;
 };
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('读取文件失败'));
-    reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.readAsDataURL(file);
-  });
+async function ocrImageToText(file: File): Promise<string> {
+  const Tesseract: any = await import('tesseract.js');
+  const result = await Tesseract.recognize(file, 'chi_sim+eng');
+  const text = String(result?.data?.text ?? '').trim();
+  return text;
 }
 
 function isoToYmd(iso: string): string {
@@ -138,11 +136,8 @@ export function TransactionImportModal(props: {
           return;
         }
         setIsParsingImage(true);
-        const dataUrl = await fileToDataUrl(file);
-        const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-        if (!match) throw new Error('图片格式不支持');
-        const mime = match[1] ?? '';
-        const base64 = match[2] ?? '';
+        const text = await ocrImageToText(file);
+        if (text.length < 20) throw new Error('未识别到足够文本，请更换更清晰的截图后重试。');
 
         const { data: session } = await supabase.auth.getSession();
         const token = session.session?.access_token;
@@ -151,7 +146,7 @@ export function TransactionImportModal(props: {
         const resp = await fetch('/api/bills/parse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ mime, base64, filename: file.name }),
+          body: JSON.stringify({ text, filename: file.name }),
         });
         const raw = await resp.text().catch(() => '');
         const payload = (() => {
@@ -305,7 +300,7 @@ export function TransactionImportModal(props: {
                   <div className="space-y-1">
                     <div className="font-medium">支持格式：CSV / 图片（截图）</div>
                     <div className="text-sm text-muted-foreground">
-                      CSV：本地解析并生成预览；图片：需要开启识别服务（服务端解析）。你也可以直接粘贴截图到此弹窗。
+                      CSV：本地解析并生成预览；图片：本地 OCR 提取文字后再进行识别。你也可以直接粘贴截图到此弹窗。
                     </div>
                   </div>
                 </Alert>
