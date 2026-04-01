@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
 import { useToastStore } from '@/stores/toast';
@@ -25,6 +25,8 @@ export default function SettingsInvitations() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const pushToast = useToastStore((s) => s.push);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const actionRef = useRef<string | null>(null);
 
   const [generatedLink, setGeneratedLink] = useState('');
   const [copied, setCopied] = useState(false);
@@ -80,6 +82,18 @@ export default function SettingsInvitations() {
       pushToast({ variant: 'danger', title: '生成失败', message: toUserMessage(err) });
     },
   });
+
+  useEffect(() => {
+    const action = searchParams.get('action');
+    if (action !== 'generate') return;
+    if (!profile?.family_id) return;
+    if (actionRef.current === 'generate') return;
+    actionRef.current = 'generate';
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+    createInvitationMutation.mutate();
+  }, [createInvitationMutation, profile?.family_id, searchParams, setSearchParams]);
 
   const revokeInvitationMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -201,4 +215,3 @@ export default function SettingsInvitations() {
     </Page>
   );
 }
-

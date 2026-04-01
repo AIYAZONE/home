@@ -1,621 +1,317 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useMemo, useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import {
-  Menu,
-  X,
-  Sun,
-  Moon,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-} from 'lucide-react';
+import { Bot, Sparkles, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/hooks/useTheme';
-import { Button } from '@/components/ui/button';
-import { navigation, mobileTabs, type NavNode } from '@/config/navigation';
+import { navigation, mobileTabs, flattenNavLinks, getAppModules, moduleQuickActions } from '@/config/navigation';
+import { Rail } from '@/layouts/app-shell/Rail';
+import { Panel } from '@/layouts/app-shell/Panel';
+import { AppHeader } from '@/layouts/app-shell/Header';
+import { PanelEdgeToggle } from '@/layouts/app-shell/PanelEdgeToggle';
+import { MobileDrawer } from '@/layouts/app-shell/MobileDrawer';
+import { CommandPalette, type CommandItem } from '@/components/ui/command-palette';
+import { CopilotPanel, type CopilotQuickAction } from '@/components/ai/copilot-panel';
+import { CopilotProvider } from '@/contexts/CopilotContext';
 
-function isHeadingNode(node: NavNode): node is Extract<NavNode, { kind: 'heading' }> {
-  return node.kind === 'heading';
+function readBool(key: string, fallback: boolean): boolean {
+  if (typeof window === 'undefined') return fallback;
+  const v = window.localStorage.getItem(key);
+  if (v === '1') return true;
+  if (v === '0') return false;
+  return fallback;
 }
 
-function isGroupNode(node: NavNode): node is Extract<NavNode, { kind: 'group' }> {
-  return node.kind === 'group';
+function writeBool(key: string, value: boolean) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(key, value ? '1' : '0');
 }
 
-function isLinkNode(node: NavNode): node is Extract<NavNode, { href: string }> {
-  return 'href' in node;
-}
-
-function matchHref(href: string, pathname: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-function getGroupKey(item: Extract<NavNode, { kind: 'group' }>): string {
-  const overviewChild = item.children.find((child): child is Extract<NavNode, { href: string }> => isLinkNode(child) && child.name === '概览');
-  const firstChild = item.children.find((child): child is Extract<NavNode, { href: string }> => isLinkNode(child));
-  const overviewHref = overviewChild?.href;
-  const firstHref = firstChild?.href;
-  return overviewHref ?? firstHref ?? item.name;
-}
-
-function findBestActiveLink(items: NavNode[], pathname: string): Extract<NavNode, { href: string }> | null {
-  let best: Extract<NavNode, { href: string }> | null = null;
-  for (const item of items) {
-    if (isHeadingNode(item)) continue;
-    if (isLinkNode(item) && matchHref(item.href, pathname)) {
-      if (!best || item.href.length > best.href.length) best = item;
-    }
-    if (isGroupNode(item)) {
-      const found = findBestActiveLink(item.children, pathname);
-      if (found && (!best || found.href.length > best.href.length)) best = found;
+function findActiveModuleId(modules: Array<{ id: string; href: string }>, pathname: string): string {
+  let best: { id: string; href: string } | null = null;
+  for (const m of modules) {
+    if (pathname === m.href || pathname.startsWith(`${m.href}/`)) {
+      if (!best || m.href.length > best.href.length) best = m;
     }
   }
-  return best;
-}
-
-function findActiveTopLevelGroup(items: NavNode[], pathname: string): Extract<NavNode, { kind: 'group' }> | null {
-  for (const item of items) {
-    if (!isGroupNode(item)) continue;
-    const found = findBestActiveLink(item.children, pathname);
-    if (found) return item;
-  }
-  return null;
-}
-
-function toDomId(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_-]/g, '');
+  return best?.id ?? modules[0]?.id ?? '/advisor';
 }
 
 export default function MainLayout() {
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem('ui.sidebarCollapsed') === '1';
-  });
-  const [expandedMenus, setExpandedMenus] = useState<Set<string>>(() => {
-    if (typeof window === 'undefined') return new Set();
-    const saved = window.localStorage.getItem('ui.expandedMenus');
-    return saved ? new Set(JSON.parse(saved)) : new Set(['/finance']);
-  });
-  const [submenuPopup, setSubmenuPopup] = useState<{ item: Extract<NavNode, { kind: 'group' }>; top: number; left: number } | null>(null);
-  const tooltipAnchorRef = useRef<HTMLElement | null>(null);
-  const [floatingTooltip, setFloatingTooltip] = useState<null | { label: string; top: number; left: number }>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
 
-  const current = useMemo(() => {
-    return findBestActiveLink(navigation, location.pathname) ?? navigation[0];
-  }, [location.pathname]);
+  const modules = useMemo(() => getAppModules(navigation), []);
+  const activeModuleId = useMemo(() => findActiveModuleId(modules, location.pathname), [location.pathname, modules]);
+  const activeModule = useMemo(() => modules.find((m) => m.id === activeModuleId) ?? modules[0], [activeModuleId, modules]);
 
-  const currentTopGroup = useMemo(() => {
-    return findActiveTopLevelGroup(navigation, location.pathname);
-  }, [location.pathname]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(() => readBool('ui.panelCollapsed', false));
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(false);
+  const [copilotPinned, setCopilotPinned] = useState(() => readBool('ui.copilotPinned', false));
+  const [copilotDraft, setCopilotDraft] = useState<string | null>(null);
 
-  const closeDrawer = () => setDrawerOpen(false);
-
-  const toggleSidebarCollapsed = () => {
-    setSidebarCollapsed((prev) => {
+  const quickActions = moduleQuickActions[activeModule?.id ?? ''] ?? [];
+  const togglePanelCollapsed = () => {
+    setPanelCollapsed((prev) => {
       const next = !prev;
-      if (typeof window !== 'undefined') window.localStorage.setItem('ui.sidebarCollapsed', next ? '1' : '0');
+      writeBool('ui.panelCollapsed', next);
       return next;
     });
   };
 
-  const toggleMenu = (key: string) => {
-    setExpandedMenus((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isCmdK = (e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K');
+      if (isCmdK) {
+        e.preventDefault();
+        setCommandOpen(true);
       }
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('ui.expandedMenus', JSON.stringify([...next]));
-      }
-      return next;
-    });
-  };
-
-  const syncTooltipPosition = (label?: string) => {
-    const el = tooltipAnchorRef.current;
-    if (!el || typeof window === 'undefined') return;
-    const rect = el.getBoundingClientRect();
-    setFloatingTooltip((prev) => {
-      const nextLabel = label ?? prev?.label;
-      if (!nextLabel) return null;
-      return { label: nextLabel, top: rect.top + rect.height / 2, left: rect.right + 12 };
-    });
-  };
-
-  const openFloatingTooltip = (el: HTMLElement, label: string) => {
-    tooltipAnchorRef.current = el;
-    syncTooltipPosition(label);
-  };
-
-  const closeFloatingTooltip = () => {
-    tooltipAnchorRef.current = null;
-    setFloatingTooltip(null);
-  };
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   useEffect(() => {
     if (!drawerOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeDrawer();
+      if (e.key === 'Escape') setDrawerOpen(false);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [drawerOpen]);
 
   useEffect(() => {
-    if (!sidebarCollapsed) {
-      closeFloatingTooltip();
-      setSubmenuPopup(null);
-      return;
-    }
-    if (!floatingTooltip && !submenuPopup) return;
-    const onReposition = () => syncTooltipPosition();
-    window.addEventListener('resize', onReposition);
-    window.addEventListener('scroll', onReposition, true);
-    return () => {
-      window.removeEventListener('resize', onReposition);
-      window.removeEventListener('scroll', onReposition, true);
-    };
-  }, [sidebarCollapsed, floatingTooltip, submenuPopup]);
+    writeBool('ui.copilotPinned', copilotPinned);
+  }, [copilotPinned]);
 
-  useEffect(() => {
-    const onClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (submenuPopup) {
-        if (!target.closest('[data-submenu-popup]') && !target.closest('[data-submenu-trigger]')) {
-          setSubmenuPopup(null);
-        }
-      }
-    };
-    window.addEventListener('click', onClickOutside);
-    return () => window.removeEventListener('click', onClickOutside);
-  }, [submenuPopup]);
+  const copilotActions: CopilotQuickAction[] = useMemo(() => {
+    const items = moduleQuickActions['/finance'] ?? [];
+    const goal = (moduleQuickActions['/growth'] ?? []).find((x) => x.id === 'growth.add-goal');
+    const invite = (moduleQuickActions['/settings'] ?? []).find((x) => x.id === 'settings.invite');
+    const pick = [items.find((x) => x.id === 'finance.add'), goal, invite].filter(Boolean) as any[];
+    return pick.map((a) => ({
+      id: a.id,
+      name: a.name,
+      description: a.description,
+      icon: a.icon,
+      onSelect: () => {
+        const href = a.action ? `${a.href}?action=${encodeURIComponent(a.action)}` : a.href;
+        navigate(href);
+        setCopilotOpen(false);
+      },
+    }));
+  }, [navigate]);
 
-  const openSubmenuPopup = (el: HTMLElement, item: Extract<NavNode, { kind: 'group' }>) => {
-    const rect = el.getBoundingClientRect();
-    setSubmenuPopup({
-      item,
-      top: rect.top,
-      left: rect.right + 8,
+  const commands: CommandItem[] = useMemo(() => {
+    const linkCommands: CommandItem[] = flattenNavLinks(navigation).map((l) => {
+      const module = modules.find((m) => l.href === m.href || l.href.startsWith(`${m.href}/`));
+      return {
+        id: `nav:${l.href}`,
+        label: l.name,
+        description: l.href,
+        icon: l.icon,
+        group: module?.name,
+        keywords: [l.href],
+        onSelect: () => navigate(l.href),
+      };
     });
-  };
+
+    const quickCommands: CommandItem[] = Object.values(moduleQuickActions).flatMap((arr) =>
+      arr.map((a) => ({
+        id: `qa:${a.id}`,
+        label: a.name,
+        description: a.description ?? a.href,
+        icon: a.icon,
+        group: '快捷动作',
+        keywords: [a.href, a.action ?? ''],
+        onSelect: () => navigate(a.action ? `${a.href}?action=${encodeURIComponent(a.action)}` : a.href),
+      })),
+    );
+
+    const aiCommands: CommandItem[] = [
+      {
+        id: 'ai.budget',
+        label: '问 AI：本月预算建议',
+        description: '根据你的现状给出预算切入点与下一步动作',
+        icon: Sparkles,
+        group: 'AI',
+        onSelect: () => {
+          setCopilotDraft('给我本月预算建议：先从哪几类开始？每类给一个可执行的下一步。');
+          setCopilotOpen(true);
+        },
+      },
+      {
+        id: 'ai.expense',
+        label: '问 AI：解释支出结构',
+        description: '把支出结构解释成“为什么 + 怎么做”',
+        icon: Sparkles,
+        group: 'AI',
+        onSelect: () => {
+          setCopilotDraft('请用一句话解释我本月支出结构的风险点，并给 3 条可执行建议。');
+          setCopilotOpen(true);
+        },
+      },
+      {
+        id: 'ai.week',
+        label: '问 AI：下周行动清单',
+        description: '把目标拆成可执行清单',
+        icon: Sparkles,
+        group: 'AI',
+        onSelect: () => {
+          setCopilotDraft('帮我生成一份下周行动清单：财务、健康、关系各 2 条，尽量具体。');
+          setCopilotOpen(true);
+        },
+      },
+      {
+        id: 'theme.toggle',
+        label: '切换主题',
+        description: isDark ? '切换到亮色模式' : '切换到暗色模式',
+        icon: isDark ? Sun : Moon,
+        group: '系统',
+        onSelect: () => toggleTheme(),
+      },
+      {
+        id: 'ai.open',
+        label: '打开 AI 面板',
+        description: '开始对话或选择建议',
+        icon: Bot,
+        group: 'AI',
+        onSelect: () => setCopilotOpen(true),
+      },
+    ];
+
+    return [...aiCommands, ...quickCommands, ...linkCommands];
+  }, [isDark, modules, navigate, toggleTheme]);
+
+  const contentPaddingLeft = panelCollapsed ? 'lg:pl-16' : 'lg:pl-[352px]';
+  const contentPaddingRight = copilotPinned ? 'lg:pr-[360px]' : '';
+  const copilotVisible = copilotPinned || copilotOpen;
+
+  const copilotApi = useMemo(
+    () => ({
+      open: () => setCopilotOpen(true),
+      close: () => setCopilotOpen(false),
+      openWithDraft: (draft: string) => {
+        setCopilotDraft(draft);
+        setCopilotOpen(true);
+      },
+    }),
+    [],
+  );
 
   return (
-    <div className="min-h-screen bg-background dark:bg-[radial-gradient(60%_35%_at_50%_-10%,hsl(var(--ring)/0.18),transparent_60%)]">
-      {sidebarCollapsed &&
-        floatingTooltip &&
-        createPortal(
-          <div
-            className="fixed z-[9999] -translate-y-1/2 whitespace-nowrap rounded-xl border border-border/60 bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-lg before:content-[''] before:absolute before:-left-2 before:top-1/2 before:-translate-y-1/2 before:border-y-8 before:border-y-transparent before:border-r-8 before:border-r-border/60 after:content-[''] after:absolute after:-left-[7px] after:top-1/2 after:-translate-y-1/2 after:border-y-[7px] after:border-y-transparent after:border-r-[7px] after:border-r-popover"
-            style={{ top: floatingTooltip.top, left: floatingTooltip.left }}
-            role="tooltip"
-          >
-            {floatingTooltip.label}
-          </div>,
-          document.body,
-        )}
-      {sidebarCollapsed &&
-        submenuPopup &&
-        createPortal(
-          <div
-            data-submenu-popup
-            className="fixed z-[9999] min-w-[160px] rounded-2xl border border-border/60 bg-popover p-1.5 shadow-lg"
-            style={{ top: submenuPopup.top, left: submenuPopup.left }}
-          >
-            {(() => {
-              const activeChild = findBestActiveLink(submenuPopup.item.children, location.pathname);
-              return submenuPopup.item.children.map((child, index) => {
-                if (isHeadingNode(child)) {
-                  return (
-                    <div
-                      key={`heading-${index}-${child.name}`}
-                      className="mt-1 px-3 py-1 text-[11px] font-semibold tracking-wide text-muted-foreground/70 first:mt-0"
-                    >
-                      {child.name}
-                    </div>
-                  );
-                }
-                if (!isLinkNode(child)) return null;
-                const isActive = activeChild?.href === child.href;
-                const Icon = child.icon;
+    <CopilotProvider value={copilotApi}>
+      <div className="min-h-screen bg-background dark:bg-[radial-gradient(60%_35%_at_50%_-10%,hsl(var(--ring)/0.18),transparent_60%)]">
+        <Rail modules={modules} activeId={activeModuleId} />
+        {activeModule ? (
+          <Panel
+            module={activeModule}
+            pathname={location.pathname}
+            collapsed={panelCollapsed}
+            quickActions={quickActions}
+            onToggleCollapsed={togglePanelCollapsed}
+          />
+        ) : null}
+
+        <PanelEdgeToggle collapsed={panelCollapsed} onToggle={togglePanelCollapsed} />
+
+        <MobileDrawer
+          open={drawerOpen}
+          modules={modules}
+          activeModuleId={activeModuleId}
+          pathname={location.pathname}
+          quickActions={quickActions}
+          onClose={() => setDrawerOpen(false)}
+        />
+
+        <div className={cn('transition-[padding] duration-300 ease-out', contentPaddingLeft, contentPaddingRight)}>
+          <AppHeader
+            title={activeModule?.name ?? '工作台'}
+            subtitle="用 AI 驱动下一步 · 轻量协作 · 全站一致"
+            isDark={isDark}
+            onOpenDrawer={() => setDrawerOpen(true)}
+            onOpenCommand={() => setCommandOpen(true)}
+            onOpenCopilot={() => {
+              setCopilotDraft(null);
+              setCopilotOpen(true);
+            }}
+            onToggleTheme={toggleTheme}
+          />
+
+          <main className="mx-auto max-w-7xl px-4 pb-28 pt-5 lg:px-8 lg:pb-10 lg:pt-6">
+            <Outlet />
+          </main>
+
+          <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:hidden">
+            <div className="mx-auto grid max-w-7xl grid-cols-4 gap-2 px-3 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+              {mobileTabs.map((item) => {
+                const isActive = location.pathname.startsWith(item.href);
+                const Icon = item.icon;
                 return (
                   <Link
-                    key={child.href}
-                    to={child.href}
-                    onClick={() => setSubmenuPopup(null)}
-                    className={cn(
-                      'flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors',
-                      isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {child.name}
-                  </Link>
-                );
-              });
-            })()}
-          </div>,
-          document.body,
-        )}
-      {drawerOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
-          onClick={closeDrawer}
-        />
-      )}
-
-      <aside
-        className={cn(
-          'fixed inset-y-0 left-0 z-50 border-r border-border/60 bg-surface transform transition-all duration-300 ease-out lg:translate-x-0 hidden lg:block',
-          sidebarCollapsed ? 'w-20' : 'w-72',
-          drawerOpen ? 'translate-x-0 block' : '',
-        )}
-        aria-label="Sidebar"
-      >
-        <div className="relative flex h-full flex-col">
-          <div className={cn('flex h-16 items-center border-b border-border/40 px-3', sidebarCollapsed ? 'justify-center' : 'justify-between')}>
-            <Link
-              to="/dashboard"
-              className={cn('flex items-center overflow-hidden', sidebarCollapsed ? 'justify-center' : 'gap-2')}
-            >
-              <div className="h-10 w-10 shrink-0 rounded-2xl border border-primary/15 bg-primary/10 text-primary grid place-items-center">
-                <img src="/brand-mark.svg" alt="Family Inc. OS" className="h-6 w-6" />
-              </div>
-              <div
-                className={cn(
-                  'leading-tight transition-all duration-200',
-                  sidebarCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 ml-2',
-                )}
-              >
-                <div className="text-sm font-semibold text-foreground whitespace-nowrap">Family Inc. OS</div>
-                <div className="text-xs text-muted-foreground whitespace-nowrap">家庭经营系统</div>
-              </div>
-            </Link>
-          </div>
-
-          <nav className="flex-1 overflow-y-auto px-3 py-3">
-            <div className={cn('space-y-1', sidebarCollapsed && 'pt-1')}>
-              {navigation.map((item) => {
-                if (isHeadingNode(item)) return null;
-                const groupItem = isGroupNode(item) ? item : null;
-                const hasChildren = Boolean(groupItem);
-                const groupKey = groupItem ? getGroupKey(groupItem) : (isLinkNode(item) ? item.href : item.name);
-                const isExpanded = groupItem ? expandedMenus.has(groupKey) : false;
-                const activeChild = groupItem ? findBestActiveLink(groupItem.children, location.pathname) : null;
-                const isActive = groupItem ? Boolean(activeChild) : isLinkNode(item) ? matchHref(item.href, location.pathname) : false;
-                const Icon = item.icon;
-
-                if (sidebarCollapsed) {
-                  return (
-                    <div key={groupKey} className="relative">
-                      <button
-                        type="button"
-                        data-submenu-trigger={hasChildren ? 'true' : undefined}
-                        onClick={(e) => {
-                          if (hasChildren) {
-                            closeFloatingTooltip();
-                            openSubmenuPopup(e.currentTarget, groupItem!);
-                          } else if (isLinkNode(item)) {
-                            navigate(item.href);
-                          }
-                        }}
-                        className={cn(
-                          'group relative z-0 mx-auto flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
-                          isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                        )}
-                        onMouseEnter={(e) => {
-                          openFloatingTooltip(e.currentTarget, item.name);
-                        }}
-                        onMouseLeave={() => {
-                          closeFloatingTooltip();
-                        }}
-                        aria-haspopup={hasChildren ? 'menu' : undefined}
-                      >
-                        <Icon className={cn('h-5 w-5 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                      </button>
-                    </div>
-                  );
-                }
-
-                if (groupItem) {
-                  const menuId = `sidebar-group-${toDomId(groupKey)}`;
-                  return (
-                    <div key={groupKey}>
-                      <button
-                        type="button"
-                        onClick={() => toggleMenu(groupKey)}
-                        className={cn(
-                          'group relative z-0 flex w-full items-center justify-between rounded-2xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
-                          'h-11 px-3',
-                          isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                        )}
-                        aria-expanded={isExpanded}
-                        aria-controls={menuId}
-                      >
-                        <span className="flex min-w-0 items-center gap-3">
-                          <Icon className={cn('h-5 w-5 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                          <span className="truncate">{item.name}</span>
-                        </span>
-                        <ChevronDown
-                          className={cn(
-                            'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:text-foreground',
-                            isExpanded && 'rotate-180',
-                            isActive && 'text-primary',
-                          )}
-                          aria-hidden="true"
-                        />
-                      </button>
-
-                      {isExpanded && (
-                        <div id={menuId} className="mt-1 ml-4 space-y-0.5 border-l border-border/40 pl-4">
-                          {groupItem.children.map((child, index) => {
-                            if (isHeadingNode(child)) {
-                              return (
-                                <div
-                                  key={`heading-${index}-${child.name}`}
-                                  className="mt-2 px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground/70 first:mt-0"
-                                >
-                                  {child.name}
-                                </div>
-                              );
-                            }
-                            if (!isLinkNode(child)) return null;
-                            const childIsActive = activeChild?.href === child.href;
-                            const ChildIcon = child.icon;
-                            return (
-                              <Link
-                                key={child.href}
-                                to={child.href}
-                                className={cn(
-                                  'group flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-medium transition-colors',
-                                  childIsActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                                )}
-                              >
-                                <ChildIcon className={cn('h-4 w-4', childIsActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                                <span className="truncate">{child.name}</span>
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-
-                return isLinkNode(item) ? (
-                  <Link
-                    key={groupKey}
+                    key={item.href}
                     to={item.href}
                     className={cn(
-                      'group relative z-0 flex w-full items-center rounded-2xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
-                      'h-11 gap-3 px-3',
-                      isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                      'flex h-12 flex-col items-center justify-center gap-1 rounded-2xl px-2 text-[11px] font-medium transition-colors',
+                      isActive ? 'bg-surface-2 text-foreground shadow-elevated' : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground',
                     )}
                     aria-current={isActive ? 'page' : undefined}
                   >
-                    <Icon className={cn('h-5 w-5 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                    <span className="truncate">{item.name}</span>
+                    <Icon className="h-5 w-5" />
+                    {item.name}
                   </Link>
-                ) : null;
-              })}
-            </div>
-          </nav>
-
-          <div className={cn('border-t border-border/40', sidebarCollapsed ? 'p-2' : 'p-3')}>
-            {sidebarCollapsed ? (
-              <button
-                type="button"
-                className="group mx-auto flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                onClick={toggleSidebarCollapsed}
-                aria-label="展开侧栏"
-                onMouseEnter={(e) => {
-                  openFloatingTooltip(e.currentTarget, '展开侧栏');
-                }}
-                onMouseLeave={() => {
-                  closeFloatingTooltip();
-                }}
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="group flex h-11 w-full items-center justify-between rounded-2xl px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                onClick={toggleSidebarCollapsed}
-                aria-label="收起侧栏"
-              >
-                <span className="flex min-w-0 items-center gap-3">
-                  <ChevronLeft className="h-5 w-5 shrink-0 text-muted-foreground group-hover:text-foreground" />
-                  <span className="truncate">收起侧栏</span>
-                </span>
-              </button>
-            )}
-          </div>
-        </div>
-      </aside>
-
-      <aside
-        className={cn(
-          'fixed inset-y-0 left-0 z-50 w-72 border-r border-border/60 bg-surface transform transition-transform duration-200 ease-out lg:hidden',
-          drawerOpen ? 'translate-x-0' : '-translate-x-full',
-        )}
-        aria-label="Mobile Sidebar"
-      >
-        <div className="flex h-full flex-col">
-          <div className="flex h-16 items-center justify-between px-5">
-            <Link to="/dashboard" className="flex items-center gap-2" onClick={closeDrawer}>
-              <div className="h-9 w-9 rounded-xl bg-primary/15 text-primary grid place-items-center">
-                <img src="/brand-mark.svg" alt="Family Inc. OS" className="h-5 w-5" />
-              </div>
-              <div className="leading-tight">
-                <div className="text-sm font-semibold text-foreground">Family Inc. OS</div>
-                <div className="text-xs text-muted-foreground">家庭经营系统</div>
-              </div>
-            </Link>
-            <button
-              onClick={closeDrawer}
-              aria-label="Close menu"
-              className="rounded-2xl p-2 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              <X className="h-6 w-6 text-muted-foreground" />
-            </button>
-          </div>
-
-          <nav className="flex-1 overflow-y-auto px-3 pb-6 pt-2">
-            <div className="space-y-1">
-              {navigation.map((item) => {
-                if (isHeadingNode(item)) return null;
-                const groupItem = isGroupNode(item) ? item : null;
-                const hasChildren = Boolean(groupItem);
-                const groupKey = groupItem ? getGroupKey(groupItem) : (isLinkNode(item) ? item.href : item.name);
-                const isExpanded = groupItem ? expandedMenus.has(groupKey) : false;
-                const activeChild = groupItem ? findBestActiveLink(groupItem.children, location.pathname) : null;
-                const isActive = groupItem ? Boolean(activeChild) : isLinkNode(item) ? matchHref(item.href, location.pathname) : false;
-                const Icon = item.icon;
-
-                return (
-                  <div key={groupKey}>
-                    {hasChildren ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => toggleMenu(groupKey)}
-                          className={cn(
-                            'group flex w-full items-center justify-between rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
-                            isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                          )}
-                          aria-expanded={isExpanded}
-                          aria-controls={`mobile-group-${toDomId(groupKey)}`}
-                        >
-                          <span className="flex min-w-0 items-center gap-3">
-                            <Icon className={cn('h-5 w-5', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                            <span className="truncate">{item.name}</span>
-                          </span>
-                          <ChevronDown
-                            className={cn(
-                              'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:text-foreground',
-                              isExpanded && 'rotate-180',
-                              isActive && 'text-primary',
-                            )}
-                            aria-hidden="true"
-                          />
-                        </button>
-
-                        {isExpanded && (
-                          <div
-                            id={`mobile-group-${toDomId(groupKey)}`}
-                            className="mt-1 ml-4 space-y-0.5 border-l border-border/60 pl-4"
-                          >
-                            {groupItem!.children.map((child, index) => {
-                              if (isHeadingNode(child)) {
-                                return (
-                                  <div
-                                    key={`heading-${index}-${child.name}`}
-                                    className="mt-2 px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground/70 first:mt-0"
-                                  >
-                                    {child.name}
-                                  </div>
-                                );
-                              }
-                              if (!isLinkNode(child)) return null;
-                              const childIsActive = location.pathname === child.href || location.pathname.startsWith(`${child.href}/`);
-                              const ChildIcon = child.icon;
-                              return (
-                                <Link
-                                  key={child.href}
-                                  to={child.href}
-                                  onClick={closeDrawer}
-                                  className={cn(
-                                    'group flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors',
-                                    childIsActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                                  )}
-                                >
-                                  <ChildIcon className={cn('h-4 w-4', childIsActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                                  <span className="truncate">{child.name}</span>
-                                </Link>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </>
-                    ) : isLinkNode(item) ? (
-                      <Link
-                        to={item.href}
-                        onClick={closeDrawer}
-                        className={cn(
-                          'group flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors',
-                          isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                        )}
-                      >
-                        <Icon className={cn('h-5 w-5', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                        <span className="truncate">{item.name}</span>
-                      </Link>
-                    ) : null}
-                  </div>
                 );
               })}
             </div>
           </nav>
         </div>
-      </aside>
 
-      <div className={cn('transition-all duration-300', sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72')}>
-        <header className="sticky top-0 z-30 border-b border-border/70 bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/50">
-          <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 lg:px-8">
-            <button
-              className="rounded-2xl p-2 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden"
-              onClick={() => setDrawerOpen(true)}
-              aria-label="Open menu"
-            >
-              <Menu className="h-6 w-6 text-foreground" />
-            </button>
+        <CommandPalette open={commandOpen} items={commands} onClose={() => setCommandOpen(false)} />
 
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold text-foreground">{currentTopGroup?.name ?? current?.name}</div>
-              <div className="hidden truncate text-xs text-muted-foreground sm:block">简单易用 · 响应式 · 协作</div>
-            </div>
-
-            <Button variant="ghost" size="sm" onClick={toggleTheme} aria-label="Toggle theme">
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
-          </div>
-        </header>
-
-        <main className="mx-auto max-w-7xl px-4 pb-28 pt-5 lg:px-8 lg:pb-10 lg:pt-6">
-          <Outlet />
-        </main>
-
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:hidden">
-          <div className="mx-auto grid max-w-7xl grid-cols-4 gap-2 px-3 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-            {mobileTabs.map((item) => {
-              const isActive = location.pathname.startsWith(item.href);
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  className={cn(
-                    'flex h-12 flex-col items-center justify-center gap-1 rounded-2xl px-2 text-[11px] font-medium transition-colors',
-                    isActive
-                      ? 'bg-surface-2 text-foreground shadow-elevated'
-                      : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground',
-                  )}
-                  aria-current={isActive ? 'page' : undefined}
-                >
-                  <Icon className="h-5 w-5" />
-                  {item.name}
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
+        {copilotOpen && !copilotPinned ? (
+          <div className="fixed inset-0 z-[9000] bg-black/40 backdrop-blur-sm" onClick={() => setCopilotOpen(false)} />
+        ) : null}
+        {copilotVisible ? (
+          <aside
+            className={cn(
+              'fixed right-0 top-0 z-[9001] h-full w-[360px] border-l border-border/60 bg-surface shadow-elevated',
+              copilotPinned ? 'hidden lg:block' : '',
+            )}
+          >
+            <CopilotPanel
+              open
+              pinned={copilotPinned}
+              title="AI Copilot"
+              contextLabel={activeModule?.name ?? undefined}
+              actions={copilotActions}
+              quickPrompts={[
+                { id: 'p1', label: '给我预算建议', prompt: '给我本月预算建议：先从哪几类开始？' },
+                { id: 'p2', label: '解释支出结构', prompt: '请解释我本月支出结构的风险点，并给 3 条建议。' },
+                { id: 'p3', label: '生成行动清单', prompt: '帮我生成一份下周行动清单：财务、健康、关系各 2 条。' },
+              ]}
+              initialDraft={copilotDraft}
+              onClose={() => {
+                if (copilotPinned) {
+                  setCopilotPinned(false);
+                } else {
+                  setCopilotOpen(false);
+                }
+              }}
+              onPinnedChange={(next) => {
+                setCopilotPinned(next);
+                if (next) {
+                  setCopilotOpen(false);
+                } else {
+                  setCopilotOpen(true);
+                }
+              }}
+              onSubmitPrompt={() => setCopilotDraft(null)}
+            />
+          </aside>
+        ) : null}
       </div>
-    </div>
+    </CopilotProvider>
   );
 }

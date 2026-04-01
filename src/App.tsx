@@ -52,7 +52,7 @@ export default function App() {
                   <Route path="family/setup" element={<FamilySetup />} />
 
                   <Route element={<RequireFamilyRoute />}>
-                    <Route index element={<Navigate to="/dashboard" replace />} />
+                    <Route index element={<Navigate to="/advisor" replace />} />
                     <Route path="dashboard" element={<Dashboard />} />
                     <Route path="finance" element={<FinanceLayout />}>
                       <Route index element={<FinanceOverview />} />

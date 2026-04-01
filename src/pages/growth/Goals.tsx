@@ -6,6 +6,7 @@ import { useFamilyMembers } from '@/hooks/useFamilyMembers';
 import { useMemberRemarks } from '@/hooks/useMemberRemarks';
 import { GrowthGoal, GrowthKeyResult } from '@/types';
 import { Loader2, Plus, Target, Trash2, CheckCircle, Pause, ChevronDown } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { formatMemberSelectLabel } from '@/lib/member';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +24,7 @@ export default function GrowthGoals() {
   const { remarkByMemberId } = useMemberRemarks();
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isAdding, setIsAdding] = useState(false);
   const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
   const [subjectFilter, setSubjectFilter] = useState<'all' | string>('all');
@@ -45,6 +47,15 @@ export default function GrowthGoals() {
     setSubjectFilter('all');
     setFormSubjectUserId(profile.id);
   }, [profile]);
+
+  useEffect(() => {
+    const action = searchParams.get('action');
+    if (action !== 'add') return;
+    setIsAdding(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     setExpandedGoal(null);
