@@ -382,10 +382,10 @@ export async function pickToolId(args: {
   const text = normalizeText(args.message);
   if (containsAny(text, ['导入', '账单', 'csv', '截图', '粘贴'])) return { toolId: 'finance.import.assistant', confidence: 0.85 };
   if (containsAny(text, ['预算', '超支', '缺口', '执行率'])) return { toolId: 'finance.budget.coach', confidence: 0.8 };
-  if (containsAny(text, ['健康', '体重', '睡眠', '步数', '指标'])) return { toolId: 'health.metrics.explain', confidence: 0.75 };
   if (containsAny(text, ['本周', '下周', '行动清单', '计划']) && containsAny(text, ['健康', '睡眠', '运动', '步数'])) {
     return { toolId: 'health.week.plan', confidence: 0.75 };
   }
+  if (containsAny(text, ['健康', '体重', '睡眠', '步数', '指标'])) return { toolId: 'health.metrics.explain', confidence: 0.75 };
   if (containsAny(text, ['打卡', '纠偏', '状态', '坚持不下去', '很差', '崩了'])) return { toolId: 'health.checkin.coach', confidence: 0.7 };
   if (parseAmount(text)) return { toolId: 'finance.quickbook.nl', confidence: 0.7 };
 
@@ -446,4 +446,3 @@ export async function runTool(args: { toolId: string; ctx: ToolContext; input: a
     meta: { ...(res.meta ?? {}), traceId: args.ctx.traceId, toolId: tool.id, confidence: res.meta?.confidence },
   });
 }
-
