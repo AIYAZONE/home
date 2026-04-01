@@ -1,5 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { usePwaStore } from '@/stores/pwa';
+import { useToastStore } from '@/stores/toast';
+import { useState } from 'react';
 
 export default function PwaStatusBanner() {
   const needRefresh = usePwaStore((s) => s.needRefresh);
@@ -7,6 +9,8 @@ export default function PwaStatusBanner() {
   const updateSW = usePwaStore((s) => s.updateSW);
   const setNeedRefresh = usePwaStore((s) => s.setNeedRefresh);
   const setOfflineReady = usePwaStore((s) => s.setOfflineReady);
+  const pushToast = useToastStore((s) => s.push);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   if (!needRefresh && !offlineReady) return null;
 
@@ -30,12 +34,24 @@ export default function PwaStatusBanner() {
             </Button>
             <Button
               size="sm"
+              disabled={isUpdating}
               onClick={async () => {
-                await updateSW?.(true);
-                window.location.reload();
+                if (isUpdating) return;
+                setIsUpdating(true);
+                try {
+                  if (updateSW) {
+                    await updateSW(true);
+                    return;
+                  }
+                  window.location.reload();
+                } catch {
+                  setIsUpdating(false);
+                  pushToast({ variant: 'danger', title: '更新失败', message: '刷新失败，请稍后再试。' });
+                  setNeedRefresh(true);
+                }
               }}
             >
-              刷新
+              {isUpdating ? '刷新中…' : '刷新'}
             </Button>
           </div>
         </div>
@@ -59,4 +75,3 @@ export default function PwaStatusBanner() {
     </div>
   );
 }
-
