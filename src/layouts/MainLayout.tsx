@@ -3,6 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Bot, Sparkles, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/hooks/useTheme';
+import { useProfile } from '@/hooks/useProfile';
 import { navigation, mobileTabs, flattenNavLinks, getAppModules, moduleQuickActions } from '@/config/navigation';
 import { Rail } from '@/layouts/app-shell/Rail';
 import { Panel } from '@/layouts/app-shell/Panel';
@@ -12,6 +13,12 @@ import { MobileDrawer } from '@/layouts/app-shell/MobileDrawer';
 import { CommandPalette, type CommandItem } from '@/components/ui/command-palette';
 import { CopilotPanel, type CopilotQuickAction } from '@/components/ai/copilot-panel';
 import { CopilotProvider } from '@/contexts/CopilotContext';
+import { sendCopilotMessage } from '@/lib/ai/client';
+import type { CopilotCard, CopilotDraft, CopilotResponse } from '@/lib/ai/types';
+import { supabase } from '@/lib/supabase';
+import { useToastStore } from '@/stores/toast';
+import { toUserMessage } from '@/lib/error';
+import { useQueryClient } from '@tanstack/react-query';
 
 function readBool(key: string, fallback: boolean): boolean {
   if (typeof window === 'undefined') return fallback;
@@ -39,7 +46,10 @@ function findActiveModuleId(modules: Array<{ id: string; href: string }>, pathna
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { isDark, toggleTheme } = useTheme();
+  const { data: profile } = useProfile();
+  const pushToast = useToastStore((s) => s.push);
 
   const modules = useMemo(() => getAppModules(navigation), []);
   const activeModuleId = useMemo(() => findActiveModuleId(modules, location.pathname), [location.pathname, modules]);
@@ -51,6 +61,7 @@ export default function MainLayout() {
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [copilotPinned, setCopilotPinned] = useState(() => readBool('ui.copilotPinned', false));
   const [copilotDraft, setCopilotDraft] = useState<string | null>(null);
+  const [draftById, setDraftById] = useState<Record<string, CopilotDraft>>({});
 
   const quickActions = moduleQuickActions[activeModule?.id ?? ''] ?? [];
   const togglePanelCollapsed = () => {
@@ -201,6 +212,125 @@ export default function MainLayout() {
     [],
   );
 
+  const onCopilotResponse = (resp: CopilotResponse) => {
+    const drafts = resp.drafts ?? [];
+    if (drafts.length === 0) return;
+    setDraftById((prev) => {
+      const next = { ...prev };
+      drafts.forEach((d) => {
+        next[d.draftId] = d;
+      });
+      return next;
+    });
+  };
+
+  const handleCardAction = async (card: CopilotCard) => {
+    try {
+      if (card.type === 'navigate') {
+        if (typeof card.payload?.href === 'string') navigate(card.payload.href);
+        setCopilotOpen(false);
+        return;
+      }
+
+      if (card.type === 'open_inbox') {
+        navigate(typeof card.payload?.href === 'string' ? card.payload.href : '/dashboard');
+        setCopilotOpen(false);
+        return;
+      }
+
+      if (card.type === 'copy_text') {
+        const text = String(card.payload?.text ?? '').trim();
+        if (!text) return;
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          pushToast({ variant: 'success', title: '已复制', message: '内容已复制到剪贴板。' });
+        } else {
+          pushToast({ variant: 'warning', title: '复制失败', message: '当前环境不支持自动复制。' });
+        }
+        return;
+      }
+
+      if (card.type === 'open_modal') {
+        const modal = String((card as any).payload?.modal ?? '');
+        const draftId = typeof (card as any).payload?.draftId === 'string' ? ((card as any).payload?.draftId as string) : null;
+        const draft = draftId ? draftById[draftId] : null;
+        if (modal === 'transaction.add') {
+          if (draft?.kind === 'transaction') {
+            window.localStorage.setItem('ui.copilot.pendingDraft.v1', JSON.stringify({ kind: draft.kind, data: draft.data, createdAt: Date.now() }));
+          }
+          navigate('/finance?action=add');
+          setCopilotOpen(false);
+          return;
+        }
+      }
+    } catch (err) {
+      pushToast({ variant: 'danger', title: '操作失败', message: toUserMessage(err) });
+    }
+  };
+
+  const confirmDraft = async (draft: CopilotDraft) => {
+    if (!profile?.family_id || !profile?.id) {
+      pushToast({ variant: 'warning', title: '无法执行', message: '缺少家庭信息，请先完成家庭设置。' });
+      return;
+    }
+
+    if (draft.kind === 'action_item') {
+      const data = draft.data ?? {};
+      const visibility = data.visibility === 'private' ? 'private' : 'family';
+      const owner_user_id =
+        visibility === 'private' ? (typeof data.owner_user_id === 'string' ? data.owner_user_id : profile.id) : (typeof data.owner_user_id === 'string' ? data.owner_user_id : null);
+      const module = typeof data.module === 'string' ? data.module : 'health';
+      const title = typeof data.title === 'string' ? data.title : draft.title;
+      const payload = {
+        family_id: profile.family_id,
+        owner_user_id,
+        visibility,
+        module,
+        title,
+        description: typeof data.description === 'string' ? data.description : null,
+        next_step: typeof data.next_step === 'string' ? data.next_step : null,
+        due_date: typeof data.due_date === 'string' ? data.due_date : null,
+        status: 'todo',
+        source: 'ai',
+        source_meta: typeof data.source_meta === 'object' && data.source_meta ? data.source_meta : {},
+        created_by_user_id: profile.id,
+      };
+      const { error } = await supabase.from('action_items').insert(payload);
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ['action_items'] });
+      pushToast({ variant: 'success', title: '已加入行动收件箱', message: '你可以在家庭概览页查看并完成它。' });
+      return;
+    }
+
+    if (draft.kind === 'transaction') {
+      const data = draft.data ?? {};
+      const amount = Number(data.amount);
+      if (!Number.isFinite(amount) || !(amount > 0)) throw new Error('金额不合法。');
+      const type = data.type === 'income' ? 'income' : 'expense';
+      const category = typeof data.category === 'string' ? data.category.trim() : '';
+      if (!category) throw new Error('分类不能为空。');
+      const date = typeof data.date === 'string' ? data.date : new Date().toISOString();
+      const visibility = data.visibility === 'private' ? 'private' : 'family';
+      const description = typeof data.description === 'string' && data.description.trim() ? data.description.trim() : null;
+      const { error } = await supabase.from('transactions').insert({
+        family_id: profile.family_id,
+        owner_user_id: profile.id,
+        visibility,
+        amount,
+        category,
+        description,
+        type,
+        date,
+      });
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      pushToast({ variant: 'success', title: '已入账', message: '交易已保存。' });
+      return;
+    }
+
+    pushToast({ variant: 'warning', title: '暂不支持', message: '该草稿类型暂未接入一键确认。' });
+  };
+
   return (
     <CopilotProvider value={copilotApi}>
       <div className="min-h-screen bg-background dark:bg-[radial-gradient(60%_35%_at_50%_-10%,hsl(var(--ring)/0.18),transparent_60%)]">
@@ -307,7 +437,18 @@ export default function MainLayout() {
                   setCopilotOpen(true);
                 }
               }}
-              onSubmitPrompt={() => setCopilotDraft(null)}
+              onSubmitPrompt={async (prompt) => {
+                const resp = await sendCopilotMessage({ message: prompt, module: activeModuleId, page: location.pathname });
+                onCopilotResponse(resp);
+                setCopilotDraft(null);
+                return resp;
+              }}
+              onCardAction={(card) => {
+                void handleCardAction(card);
+              }}
+              onConfirmDraft={async (draft) => {
+                await confirmDraft(draft);
+              }}
             />
           </aside>
         ) : null}

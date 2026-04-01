@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ActionInboxCard } from '@/pages/dashboard/ActionInboxCard';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -147,6 +148,8 @@ export default function Dashboard() {
           <Button onClick={() => navigate('/finance')}>快速记账</Button>
         </PageActions>
       </PageHeader>
+
+      <ActionInboxCard />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[

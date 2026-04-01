@@ -138,6 +138,7 @@ export const moduleQuickActions: Record<string, ModuleQuickAction[]> = {
   ],
   '/finance': [
     { id: 'finance.add', name: '记一笔', description: '快速记录收入/支出', href: '/finance', icon: Receipt, action: 'add' },
+    { id: 'finance.import', name: '导入账单', description: '上传 CSV 或粘贴截图批量入账', href: '/finance/transactions', icon: Download, action: 'import' },
     { id: 'finance.transactions', name: '交易记录', description: '查看与筛选交易', href: '/finance/transactions', icon: Receipt },
     { id: 'finance.budgets', name: '预算管理', description: '设置预算与模板', href: '/finance/budgets', icon: PiggyBank },
     { id: 'finance.recurring', name: '固定支出', description: '周期性账单管理', href: '/finance/recurring', icon: Repeat },

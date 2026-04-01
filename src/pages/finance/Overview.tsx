@@ -20,7 +20,7 @@ import { ListRow, ListRowLeading, ListRowTrailing } from '@/components/ui/list-r
 import { Page, PageActions, PageBody, PageDescription, PageHeader, PageSection, PageTitle } from '@/components/ui/page';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
-import { TransactionEditorModal } from '@/components/finance/TransactionEditorModal';
+import { TransactionEditorModal, type TransactionEditorValue } from '@/components/finance/TransactionEditorModal';
 import { useBudgets } from '@/hooks/useBudgets';
 import { addMonths, computeBudgetMetrics, parseMonthStartKey, toMonthStartKey, topEntries } from '@/lib/budget';
 
@@ -38,6 +38,7 @@ export default function FinanceOverview() {
   const [searchParams, setSearchParams] = useSearchParams();
   const pushToast = useToastStore((s) => s.push);
   const [isAdding, setIsAdding] = useState(false);
+  const [initialValue, setInitialValue] = useState<Partial<TransactionEditorValue> | null>(null);
   const [summaryMode, setSummaryMode] = useState<'month' | 'quarter' | 'year'>(() => {
     const raw = searchParams.get('mode');
     if (raw === 'month' || raw === 'quarter' || raw === 'year') return raw;
@@ -71,6 +72,18 @@ export default function FinanceOverview() {
   useEffect(() => {
     const action = searchParams.get('action');
     if (action !== 'add') return;
+    try {
+      const raw = window.localStorage.getItem('ui.copilot.pendingDraft.v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.kind === 'transaction' && parsed?.data && typeof parsed.data === 'object') {
+          setInitialValue(parsed.data as any);
+        }
+        window.localStorage.removeItem('ui.copilot.pendingDraft.v1');
+      }
+    } catch {
+      window.localStorage.removeItem('ui.copilot.pendingDraft.v1');
+    }
     setIsAdding(true);
     const next = new URLSearchParams(searchParams);
     next.delete('action');
@@ -202,6 +215,12 @@ export default function FinanceOverview() {
   const closeEditor = useCallback(() => {
     setIsAdding(false);
     pendingRecurringRef.current = null;
+    setInitialValue(null);
+  }, []);
+
+  const openEditor = useCallback(() => {
+    setInitialValue(null);
+    setIsAdding(true);
   }, []);
 
   const closeAllocationPrompt = useCallback(() => {
@@ -515,7 +534,7 @@ export default function FinanceOverview() {
           <PageDescription>一眼看懂状态，快速执行下一步。</PageDescription>
         </div>
         <PageActions>
-          <Button onClick={() => setIsAdding(true)}>
+          <Button onClick={openEditor}>
             <Plus className="h-4 w-4" />
             记一笔
           </Button>
@@ -539,7 +558,7 @@ export default function FinanceOverview() {
               </CardHeader>
               <CardContent className="pt-0">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Button onClick={() => setIsAdding(true)}>
+                  <Button onClick={openEditor}>
                     <Plus className="h-4 w-4" />
                     记第一笔
                   </Button>
@@ -830,6 +849,7 @@ export default function FinanceOverview() {
         familyId={profile?.family_id}
         transactions={transactions}
         categories={categories}
+        initialValue={initialValue}
         isSubmitting={addTransactionMutation.isPending}
         onClose={closeEditor}
         onSubmit={(payload, { recurring }) => {

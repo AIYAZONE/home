@@ -214,6 +214,24 @@ export interface InsurancePolicy {
   updated_at: string;
 }
 
+export interface ActionItem {
+  id: string;
+  family_id: string;
+  owner_user_id: string | null;
+  visibility: 'family' | 'private';
+  module: 'finance' | 'health' | 'relationships' | 'growth' | 'settings';
+  title: string;
+  description: string | null;
+  next_step: string | null;
+  due_date: string | null;
+  status: 'todo' | 'doing' | 'done' | 'dismissed';
+  source: 'ai' | 'user';
+  source_meta: Record<string, unknown>;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface RelationshipEvent {
   id: string;
   family_id: string;

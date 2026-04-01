@@ -1,0 +1,158 @@
+import { createClient } from '@supabase/supabase-js';
+import { authGetUser } from '../_lib/supabaseAuthCompat';
+import { ChatRequestSchema, CopilotResponseSchema } from '../_lib/aiSchemas';
+import { pickToolId, runTool } from '../_lib/aiTools';
+import { toSafeMessage } from '../_lib/aiOpenAiCompat';
+
+type RequestLike = {
+  method?: string;
+  headers?: Record<string, string | string[] | undefined>;
+  body?: unknown;
+};
+
+type ResponseLike = {
+  status: (code: number) => ResponseLike;
+  setHeader: (key: string, value: string) => void;
+  json: (payload: unknown) => void;
+};
+
+function pickHeader(headers: RequestLike['headers'], key: string): string | undefined {
+  const value = headers?.[key];
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value[0];
+}
+
+function getBearerToken(headers: RequestLike['headers']): string | null {
+  const auth = pickHeader(headers, 'authorization') ?? pickHeader(headers, 'Authorization');
+  if (!auth) return null;
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
+type RateKey = string;
+type RateState = { windowStart: number; count: number };
+const rateState = new Map<RateKey, RateState>();
+
+function getClientIp(headers: RequestLike['headers']): string | null {
+  const xff = pickHeader(headers, 'x-forwarded-for');
+  if (xff) return xff.split(',')[0]?.trim() || null;
+  const realIp = pickHeader(headers, 'x-real-ip');
+  return realIp?.trim() || null;
+}
+
+function rateLimit(key: string, limit: number, windowMs: number): boolean {
+  const now = Date.now();
+  const current = rateState.get(key);
+  if (!current || now - current.windowStart >= windowMs) {
+    rateState.set(key, { windowStart: now, count: 1 });
+    return true;
+  }
+  if (current.count >= limit) return false;
+  current.count += 1;
+  return true;
+}
+
+function traceId(): string {
+  const anyCrypto: any = globalThis as any;
+  const v = anyCrypto?.crypto?.randomUUID ? anyCrypto.crypto.randomUUID() : `${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+  return `ai_${v}`;
+}
+
+export default async function handler(req: RequestLike, res: ResponseLike) {
+  res.setHeader('Cache-Control', 'no-store');
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: '不支持的请求方法。' });
+  }
+
+  const token = getBearerToken(req.headers);
+  if (!token) {
+    return res.status(401).json({ message: '未登录或登录已过期，请重新登录。' });
+  }
+
+  const ip = getClientIp(req.headers) ?? 'unknown';
+  if (!rateLimit(`ai_chat:${ip}`, 30, 60_000)) {
+    return res.status(429).json({ message: '请求过于频繁，请稍后再试。' });
+  }
+
+  const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+  const anonKey = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    return res.status(500).json({ message: '服务配置缺失，请联系管理员。' });
+  }
+
+  const anonClient = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+
+  const { data: userData, error: userError } = await authGetUser(anonClient, token);
+  if (userError || !userData.user) {
+    return res.status(401).json({ message: '未登录或登录已过期，请重新登录。' });
+  }
+
+  const userClient = createClient(url, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+
+  const { data: profileRow, error: profileError } = await userClient
+    .from('users')
+    .select('family_id, role')
+    .eq('id', userData.user.id)
+    .single();
+
+  if (profileError || !profileRow?.family_id) {
+    return res.status(400).json({ message: '缺少家庭信息，请先完成家庭设置。' });
+  }
+
+  const parsed = ChatRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: '请求参数不合法。' });
+  }
+
+  const t = traceId();
+  try {
+    const provider = ((process.env.AI_LLM_PROVIDER ?? 'deepseek') as string).toLowerCase() === 'openai' ? 'openai' : 'deepseek';
+    const deepseek = {
+      apiKey: process.env.DEEPSEEK_API_KEY ?? '',
+      baseUrl: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
+      model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
+    };
+    const openai = {
+      apiKey: process.env.OPENAI_API_KEY ?? '',
+      model: 'gpt-4o-mini',
+    };
+
+    const { toolId, confidence } = await pickToolId({
+      message: parsed.data.message,
+      module: parsed.data.module,
+      provider,
+      deepseek,
+      openai,
+      traceId: t,
+    });
+
+    const result = await runTool({
+      toolId,
+      ctx: {
+        traceId: t,
+        userId: userData.user.id,
+        familyId: profileRow.family_id,
+        role: profileRow.role === 'admin' || profileRow.role === 'parent' || profileRow.role === 'child' ? profileRow.role : 'parent',
+        userClient,
+        now: new Date(),
+      },
+      input: { message: parsed.data.message, module: parsed.data.module, page: parsed.data.page, context: parsed.data.context },
+    });
+
+    const safe = CopilotResponseSchema.parse({
+      ...result,
+      meta: { ...(result.meta ?? {}), toolId, confidence, traceId: t },
+    });
+
+    return res.status(200).json(safe);
+  } catch (err: unknown) {
+    return res.status(400).json({ message: toSafeMessage(err), traceId: t });
+  }
+}
+
