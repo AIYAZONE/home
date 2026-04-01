@@ -68,6 +68,15 @@ export default function FinanceOverview() {
 
   const [monthValue, setMonthValue] = useState(() => normalizeMonthValue(searchParams.get('month')));
 
+  useEffect(() => {
+    const action = searchParams.get('action');
+    if (action !== 'add') return;
+    setIsAdding(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   const minMonthValue = useMemo(() => toMonthStartKey(addMonths(nowMonthStart, -36)).slice(0, 7), [nowMonthStart]);
   const maxMonthValue = useMemo(() => toMonthStartKey(nowMonthStart).slice(0, 7), [nowMonthStart]);
 
