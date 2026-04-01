@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
@@ -22,6 +22,7 @@ import { TransactionImportModal } from '@/components/finance/TransactionImportMo
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useSearchParams } from 'react-router-dom';
 
 export default function FinanceTransactions() {
   const { data: profile, isLoading: isProfileLoading } = useProfile();
@@ -30,12 +31,22 @@ export default function FinanceTransactions() {
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
   const { openConfirm, dialog } = useConfirm();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [isAddingOpen, setIsAddingOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [isSavingRecurring, setIsSavingRecurring] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+
+  useEffect(() => {
+    const action = searchParams.get('action');
+    if (action !== 'import') return;
+    setIsImportOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const [keyword, setKeyword] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');

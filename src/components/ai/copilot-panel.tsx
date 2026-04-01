@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import { Bot, CornerUpLeft, Pin, PinOff, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toUserMessage } from '@/lib/error';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
+import type { CopilotCard, CopilotDraft, CopilotResponse } from '@/lib/ai/types';
 
 type Role = 'user' | 'assistant';
 
@@ -13,6 +16,7 @@ type Message = {
   role: Role;
   content: string;
   createdAt: number;
+  response?: CopilotResponse | null;
 };
 
 export type CopilotQuickAction = {
@@ -38,7 +42,13 @@ function loadMessages(): Message[] {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((m: any) => typeof m?.id === 'string' && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-      .map((m: any) => ({ id: m.id, role: m.role, content: m.content, createdAt: Number(m.createdAt) || Date.now() })) as Message[];
+      .map((m: any) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        createdAt: Number(m.createdAt) || Date.now(),
+        response: m?.response && typeof m.response === 'object' ? m.response : null,
+      })) as Message[];
   } catch {
     return [];
   }
@@ -59,10 +69,13 @@ export function CopilotPanel(props: {
   initialDraft?: string | null;
   onClose: () => void;
   onPinnedChange: (next: boolean) => void;
-  onSubmitPrompt?: (prompt: string) => void;
+  onSubmitPrompt?: (prompt: string) => Promise<CopilotResponse>;
+  onCardAction?: (card: CopilotCard) => void;
+  onConfirmDraft?: (draft: CopilotDraft) => Promise<void>;
 }) {
   const [messages, setMessages] = useState<Message[]>(() => loadMessages());
   const [draft, setDraft] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -89,22 +102,35 @@ export function CopilotPanel(props: {
     el.scrollTop = el.scrollHeight;
   }, [messages, props.open]);
 
-  const canSend = useMemo(() => draft.trim().length > 0, [draft]);
+  const canSend = useMemo(() => draft.trim().length > 0 && !isSending, [draft, isSending]);
 
-  const send = (text: string) => {
+  const send = async (text: string) => {
     const content = text.trim();
     if (!content) return;
     const now = Date.now();
     const userMsg: Message = { id: uid('u'), role: 'user', content, createdAt: now };
-    const assistantMsg: Message = {
-      id: uid('a'),
-      role: 'assistant',
-      content: `我已收到：${content}\n\n当前 AI 能力正在建设中。我可以先帮你把需求拆成“下一步动作”，并提供入口跳转。`,
-      createdAt: now + 1,
-    };
-    setMessages((prev) => [...prev, userMsg, assistantMsg].slice(-50));
+    const assistantId = uid('a');
+    const pending: Message = { id: assistantId, role: 'assistant', content: '正在思考…', createdAt: now + 1, response: null };
+    setMessages((prev) => [...prev, userMsg, pending].slice(-50));
     setDraft('');
-    props.onSubmitPrompt?.(content);
+    setIsSending(true);
+    try {
+      if (!props.onSubmitPrompt) throw new Error('AI 能力未启用。');
+      const response = await props.onSubmitPrompt(content);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? { ...m, content: response.summary, response, createdAt: Date.now() }
+            : m,
+        ),
+      );
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === assistantId ? { ...m, content: toUserMessage(err), response: null, createdAt: Date.now() } : m)),
+      );
+    } finally {
+      setIsSending(false);
+    }
   };
 
   if (!props.open) return null;
@@ -153,7 +179,7 @@ export function CopilotPanel(props: {
                     type="button"
                     variant="secondary"
                     className="justify-start"
-                    onClick={() => send(p.prompt)}
+                    onClick={() => void send(p.prompt)}
                   >
                     {p.label}
                   </Button>
@@ -189,7 +215,53 @@ export function CopilotPanel(props: {
                     : 'mr-auto border-border/60 bg-card text-foreground',
                 )}
               >
-                {m.content}
+                {m.role === 'assistant' && m.response ? (
+                  <div className="space-y-2">
+                    <div>{m.response.summary}</div>
+                    {(m.response.warnings ?? []).length > 0 ? (
+                      <Alert variant="warning">
+                        <div className="space-y-1">
+                          <div className="font-medium">注意</div>
+                          <div className="text-sm text-muted-foreground">
+                            {(m.response.warnings ?? []).slice(0, 3).join('；')}
+                          </div>
+                        </div>
+                      </Alert>
+                    ) : null}
+                    {(m.response.cards ?? []).length > 0 ? (
+                      <div className="grid grid-cols-1 gap-2">
+                        {m.response.cards.map((c, idx) => (
+                          <Button key={`${m.id}_c_${idx}`} type="button" variant="secondary" className="justify-start" onClick={() => props.onCardAction?.(c)}>
+                            {c.label}
+                          </Button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {(m.response.drafts ?? []).length > 0 ? (
+                      <div className="space-y-2">
+                        {(m.response.drafts ?? []).map((d) => (
+                          <div key={d.draftId} className="rounded-xl border border-border/60 bg-background/40 p-3">
+                            <div className="text-sm font-medium">{d.title}</div>
+                            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="text-xs text-muted-foreground">{d.kind}</div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={async () => {
+                                  await props.onConfirmDraft?.(d);
+                                }}
+                              >
+                                确认
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  m.content
+                )}
               </div>
             ))}
           </div>
@@ -200,7 +272,7 @@ export function CopilotPanel(props: {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            send(draft);
+            void send(draft);
           }}
           className="flex items-center gap-2"
         >
@@ -218,4 +290,3 @@ export function CopilotPanel(props: {
     </div>
   );
 }
-
