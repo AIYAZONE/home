@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useActionItems } from '@/hooks/useActionItems';
 import { useCopilot } from '@/contexts/CopilotContext';
+import { useConfirm } from '@/hooks/useConfirm';
 
 function formatDueDate(ymd: string): string {
   const d = new Date(`${ymd}T00:00:00`);
@@ -18,6 +19,7 @@ function formatDueDate(ymd: string): string {
 export function ActionInboxCard() {
   const { items, isLoading, updateStatus, isUpdating } = useActionItems();
   const { openWithDraft } = useCopilot();
+  const { openConfirm, dialog } = useConfirm();
 
   const top = useMemo(() => (items ?? []).slice(0, 5), [items]);
 
@@ -81,6 +83,14 @@ export function ActionInboxCard() {
                     variant="ghost"
                     disabled={isUpdating}
                     onClick={async () => {
+                      const ok = await openConfirm({
+                        title: '确认忽略',
+                        message: '忽略后将从行动收件箱移除，你可以稍后再让 AI 生成新的行动。',
+                        confirmText: '忽略',
+                        cancelText: '取消',
+                        tone: 'danger',
+                      });
+                      if (!ok) return;
                       await updateStatus({ id: it.id, status: 'dismissed' });
                     }}
                     aria-label="忽略"
@@ -92,8 +102,8 @@ export function ActionInboxCard() {
             ))}
           </div>
         )}
+        {dialog}
       </CardContent>
     </Card>
   );
 }
-

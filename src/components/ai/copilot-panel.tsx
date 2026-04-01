@@ -76,6 +76,7 @@ export function CopilotPanel(props: {
   const [messages, setMessages] = useState<Message[]>(() => loadMessages());
   const [draft, setDraft] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [draftStatusById, setDraftStatusById] = useState<Record<string, 'idle' | 'confirming' | 'confirmed'>>({});
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -247,11 +248,25 @@ export function CopilotPanel(props: {
                               <Button
                                 type="button"
                                 size="sm"
+                                disabled={draftStatusById[d.draftId] === 'confirming' || draftStatusById[d.draftId] === 'confirmed'}
                                 onClick={async () => {
-                                  await props.onConfirmDraft?.(d);
+                                  const current = draftStatusById[d.draftId] ?? 'idle';
+                                  if (current !== 'idle') return;
+                                  setDraftStatusById((prev) => ({ ...prev, [d.draftId]: 'confirming' }));
+                                  try {
+                                    if (!props.onConfirmDraft) throw new Error('暂不支持该操作。');
+                                    await props.onConfirmDraft(d);
+                                    setDraftStatusById((prev) => ({ ...prev, [d.draftId]: 'confirmed' }));
+                                  } catch {
+                                    setDraftStatusById((prev) => ({ ...prev, [d.draftId]: 'idle' }));
+                                  }
                                 }}
                               >
-                                确认
+                                {draftStatusById[d.draftId] === 'confirmed'
+                                  ? '已确认'
+                                  : draftStatusById[d.draftId] === 'confirming'
+                                    ? '确认中…'
+                                    : '确认'}
                               </Button>
                             </div>
                           </div>
