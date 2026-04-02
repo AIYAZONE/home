@@ -11,8 +11,7 @@ type SupabaseAuthDeleteUserResult = {
 export async function authGetUser(client: any, token: string): Promise<SupabaseAuthGetUserResult> {
   const auth = client?.auth as any;
   if (auth && typeof auth.getUser === 'function') {
-    const res = await auth.getUser(token);
-    if (res?.data?.user || !res?.error) return res;
+    return await auth.getUser(token);
   }
   if (auth?.api && typeof auth.api.getUser === 'function') {
     return await auth.api.getUser(token);
@@ -30,4 +29,3 @@ export async function authAdminDeleteUser(client: any, userId: string): Promise<
   }
   throw new Error('认证管理能力不可用');
 }
-
