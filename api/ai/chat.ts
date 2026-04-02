@@ -59,59 +59,59 @@ function traceId(): string {
 }
 
 export default async function handler(req: RequestLike, res: ResponseLike) {
+  const t = traceId();
   res.setHeader('Cache-Control', 'no-store');
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ message: '不支持的请求方法。' });
-  }
-
-  const token = getBearerToken(req.headers);
-  if (!token) {
-    return res.status(401).json({ message: '未登录或登录已过期，请重新登录。' });
-  }
-
-  const ip = getClientIp(req.headers) ?? 'unknown';
-  if (!rateLimit(`ai_chat:${ip}`, 30, 60_000)) {
-    return res.status(429).json({ message: '请求过于频繁，请稍后再试。' });
-  }
-
-  const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
-    return res.status(500).json({ message: '服务配置缺失，请联系管理员。' });
-  }
-
-  const anonClient = createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  });
-
-  const { data: userData, error: userError } = await authGetUser(anonClient, token);
-  if (userError || !userData.user) {
-    return res.status(401).json({ message: '未登录或登录已过期，请重新登录。' });
-  }
-
-  const userClient = createClient(url, anonKey, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  });
-
-  const { data: profileRow, error: profileError } = await userClient
-    .from('users')
-    .select('family_id, role')
-    .eq('id', userData.user.id)
-    .single();
-
-  if (profileError || !profileRow?.family_id) {
-    return res.status(400).json({ message: '缺少家庭信息，请先完成家庭设置。' });
-  }
-
-  const parsed = ChatRequestSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ message: '请求参数不合法。' });
-  }
-
-  const t = traceId();
   try {
+    if (req.method !== 'POST') {
+      return res.status(405).json({ message: '不支持的请求方法。' });
+    }
+
+    const token = getBearerToken(req.headers);
+    if (!token) {
+      return res.status(401).json({ message: '未登录或登录已过期，请重新登录。' });
+    }
+
+    const ip = getClientIp(req.headers) ?? 'unknown';
+    if (!rateLimit(`ai_chat:${ip}`, 30, 60_000)) {
+      return res.status(429).json({ message: '请求过于频繁，请稍后再试。' });
+    }
+
+    const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+    const anonKey = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
+    if (!url || !anonKey) {
+      return res.status(500).json({ message: '服务配置缺失，请联系管理员。', traceId: t });
+    }
+
+    const anonClient = createClient(url, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+
+    const { data: userData, error: userError } = await authGetUser(anonClient, token);
+    if (userError || !userData.user) {
+      return res.status(401).json({ message: '未登录或登录已过期，请重新登录。', traceId: t });
+    }
+
+    const userClient = createClient(url, anonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+
+    const { data: profileRow, error: profileError } = await userClient
+      .from('users')
+      .select('family_id, role')
+      .eq('id', userData.user.id)
+      .single();
+
+    if (profileError || !profileRow?.family_id) {
+      return res.status(400).json({ message: '缺少家庭信息，请先完成家庭设置。', traceId: t });
+    }
+
+    const parsed = ChatRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: '请求参数不合法。', traceId: t });
+    }
+
     const provider = ((process.env.AI_LLM_PROVIDER ?? 'deepseek') as string).toLowerCase() === 'openai' ? 'openai' : 'deepseek';
     const deepseek = {
       apiKey: process.env.DEEPSEEK_API_KEY ?? '',
@@ -152,7 +152,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
 
     return res.status(200).json(safe);
   } catch (err: unknown) {
+    console.error('[api/ai/chat]', { traceId: t, message: err instanceof Error ? err.message : String(err) });
     return res.status(400).json({ message: toSafeMessage(err), traceId: t });
   }
 }
-
