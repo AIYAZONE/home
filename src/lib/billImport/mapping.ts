@@ -17,6 +17,7 @@ export type BillImportDraftTransaction = {
     rowIndex: number;
     raw: Record<string, string>;
     duplicateOfId?: string;
+    duplicateOfExistingId?: string;
   };
 };
 
@@ -175,4 +176,3 @@ export function buildDraftTransactionsFromCsvRows(args: {
 
   return { items, rejected };
 }
-
