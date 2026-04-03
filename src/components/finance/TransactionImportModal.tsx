@@ -27,8 +27,13 @@ type MappingDraft = {
 async function ocrImageToText(file: File): Promise<string> {
   const Tesseract: any = await import('tesseract.js');
   const result = await Tesseract.recognize(file, 'chi_sim+eng');
-  const text = String(result?.data?.text ?? '').trim();
-  return text;
+  const raw = String(result?.data?.text ?? '');
+  const lines = raw
+    .split('\n')
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter((l) => l.length > 0)
+    .filter((l) => !/^[-_=|—–·•]+$/.test(l));
+  return lines.join('\n');
 }
 
 function isoToYmd(iso: string): string {
@@ -53,12 +58,16 @@ function normalizeDuplicateKey(input: string): string {
   return input.trim().toLowerCase().replace(/\s+/g, ' ').replace(/[，。,.]/g, '');
 }
 
+function buildDraftDuplicateKey(it: { type: string; date: string; amount: number; description: string | null; category: string }) {
+  const ymd = it.date.slice(0, 10);
+  const desc = normalizeDuplicateKey(it.description ?? it.category);
+  return `${it.type}|${ymd}|${it.amount}|${desc}`;
+}
+
 function markDuplicates(items: BillImportDraftTransaction[]): BillImportDraftTransaction[] {
   const byKey = new Map<string, string>();
   return items.map((it) => {
-    const ymd = it.date.slice(0, 10);
-    const desc = normalizeDuplicateKey(it.description ?? it.category);
-    const key = `${it.type}|${ymd}|${it.amount}|${desc}`;
+    const key = buildDraftDuplicateKey(it);
     const firstId = byKey.get(key);
     if (!firstId) {
       byKey.set(key, it.id);
@@ -66,6 +75,48 @@ function markDuplicates(items: BillImportDraftTransaction[]): BillImportDraftTra
     }
     return { ...it, sourceMeta: { ...(it.sourceMeta ?? { rowIndex: 0, raw: {} }), duplicateOfId: firstId } };
   });
+}
+
+function markDuplicatesAgainstHistory(args: { drafts: BillImportDraftTransaction[]; history: Transaction[] }) {
+  const byKey = new Map<string, string>();
+  (args.history ?? []).forEach((t) => {
+    const date = typeof t?.date === 'string' ? t.date : '';
+    const amount = Number((t as any)?.amount);
+    const type = String((t as any)?.type ?? '');
+    const category = String((t as any)?.category ?? '');
+    const description = typeof (t as any)?.description === 'string' ? (t as any).description : null;
+    if (!date || !Number.isFinite(amount) || !type) return;
+    const key = buildDraftDuplicateKey({ type, date, amount: Math.abs(amount), category, description });
+    if (!byKey.has(key)) byKey.set(key, String((t as any)?.id ?? ''));
+  });
+
+  if (byKey.size === 0) return args.drafts;
+
+  return args.drafts.map((d) => {
+    const key = buildDraftDuplicateKey(d);
+    const existingId = byKey.get(key);
+    if (!existingId) return d;
+    return { ...d, sourceMeta: { ...(d.sourceMeta ?? { rowIndex: 0, raw: {} }), duplicateOfExistingId: existingId } };
+  });
+}
+
+function buildCandidateCategories(args: { categories: Category[]; history: Transaction[] }) {
+  const all = (args.categories ?? []).map((c) => c.name.trim()).filter(Boolean);
+  const base = Array.from(new Set(all));
+  if (base.length <= 120) return base;
+
+  const counts = new Map<string, number>();
+  (args.history ?? []).forEach((t) => {
+    const name = String((t as any)?.category ?? '').trim();
+    if (!name) return;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  });
+
+  const sorted = base.sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0));
+  const picked = sorted.slice(0, 110);
+  const maybeOther = base.find((x) => x === '其他') ?? base.find((x) => x.includes('其他'));
+  if (maybeOther && !picked.includes(maybeOther)) picked.push(maybeOther);
+  return picked.slice(0, 120);
 }
 
 export function TransactionImportModal(props: {
@@ -92,9 +143,11 @@ export function TransactionImportModal(props: {
   const [visibilityAll, setVisibilityAll] = useState<'family' | 'private'>('family');
   const [bulkCategory, setBulkCategory] = useState<string>('');
   const [isParsingImage, setIsParsingImage] = useState(false);
+  const [parseWarnings, setParseWarnings] = useState<string[]>([]);
 
   const invalidCount = useMemo(() => drafts.filter((d) => !isValidDraft(d)).length, [drafts]);
   const duplicateCount = useMemo(() => drafts.filter((d) => !!d.sourceMeta?.duplicateOfId).length, [drafts]);
+  const existingDuplicateCount = useMemo(() => drafts.filter((d) => !!d.sourceMeta?.duplicateOfExistingId).length, [drafts]);
 
   const categoryOptions = useMemo(() => (props.categories ?? []).map((c) => c.name), [props.categories]);
 
@@ -110,6 +163,7 @@ export function TransactionImportModal(props: {
     setVisibilityAll('family');
     setBulkCategory('');
     setIsParsingImage(false);
+    setParseWarnings([]);
   }, [props.open]);
 
   if (!props.open) return null;
@@ -122,7 +176,7 @@ export function TransactionImportModal(props: {
       defaultVisibility: visibilityAll,
       guessCategory: (desc, type) => guessCategoryFromHistory({ description: desc, type, history }),
     });
-    setDrafts(items);
+    setDrafts(markDuplicatesAgainstHistory({ drafts: items, history }));
     setRejected(rej);
     setStep('preview');
   };
@@ -146,7 +200,18 @@ export function TransactionImportModal(props: {
         const resp = await fetch('/api/bills/parse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ text, filename: file.name }),
+          body: JSON.stringify({
+            text,
+            filename: file.name,
+            categories: buildCandidateCategories({ categories: props.categories ?? [], history: props.transactions ?? [] }),
+            defaultCategory: (() => {
+              const names = (props.categories ?? []).map((c) => c.name.trim()).filter(Boolean);
+              const exact = names.find((x) => x === '其他');
+              if (exact) return exact;
+              const like = names.find((x) => x.includes('其他'));
+              return like;
+            })(),
+          }),
         });
         const raw = await resp.text().catch(() => '');
         const payload = (() => {
@@ -168,6 +233,8 @@ export function TransactionImportModal(props: {
 
         const history = props.transactions ?? [];
         const items = Array.isArray(payload?.items) ? payload.items : [];
+        const warnings = Array.isArray(payload?.warnings) ? payload.warnings.filter((x: any) => typeof x === 'string') : [];
+        setParseWarnings(warnings.slice(0, 5));
         if (items.length === 0) throw new Error('未识别到有效交易，请更换更清晰的截图后重试。');
         const mapped: BillImportDraftTransaction[] = items.map((it: any, idx: number) => {
           const ymd = typeof it?.date === 'string' ? it.date : new Date().toISOString().slice(0, 10);
@@ -175,7 +242,13 @@ export function TransactionImportModal(props: {
           const amount = Number(it?.amount);
           const description = typeof it?.description === 'string' && it.description.trim() ? it.description.trim() : null;
           const catFromAi = typeof it?.category === 'string' && it.category.trim() ? it.category.trim() : '';
-          const category = catFromAi || guessCategoryFromHistory({ description, type, history });
+          const fallbackCategory = (() => {
+            const names = (props.categories ?? []).map((c) => c.name.trim()).filter(Boolean);
+            const exact = names.find((x) => x === '其他');
+            if (exact) return exact;
+            return names.find((x) => x.includes('其他')) ?? '';
+          })();
+          const category = catFromAi || guessCategoryFromHistory({ description, type, history }) || fallbackCategory;
           return {
             id: `import_img_${idx}_${Math.random().toString(16).slice(2)}`,
             type,
@@ -191,7 +264,7 @@ export function TransactionImportModal(props: {
         setRawRows([]);
         setMappingDraft({ dateKey: '', amountKey: '', descriptionKey: null, typeKey: null });
         setRejected(0);
-        setDrafts(markDuplicates(mapped));
+        setDrafts(markDuplicatesAgainstHistory({ drafts: markDuplicates(mapped), history }));
         setStep('preview');
         return;
       }
@@ -236,15 +309,8 @@ export function TransactionImportModal(props: {
   };
 
   const removeDuplicates = () => {
-    const duplicated = new Set<string>();
     return setDrafts((prev) =>
-      prev.filter((d) => {
-        const dupeOf = d.sourceMeta?.duplicateOfId;
-        if (!dupeOf) return true;
-        if (duplicated.has(d.id)) return false;
-        duplicated.add(d.id);
-        return false;
-      }),
+      prev.filter((d) => !d.sourceMeta?.duplicateOfId && !d.sourceMeta?.duplicateOfExistingId),
     );
   };
 
@@ -436,9 +502,9 @@ export function TransactionImportModal(props: {
                       <Sparkles className="h-4 w-4" />
                       {visibilityAll === 'family' ? '全部设为私密' : '全部设为家庭可见'}
                     </Button>
-                    <Button type="button" size="sm" variant="secondary" disabled={duplicateCount === 0} onClick={removeDuplicates}>
+                    <Button type="button" size="sm" variant="secondary" disabled={duplicateCount + existingDuplicateCount === 0} onClick={removeDuplicates}>
                       <Ban className="h-4 w-4" />
-                      排除重复（{duplicateCount}）
+                      排除重复（本次 {duplicateCount} / 历史 {existingDuplicateCount}）
                     </Button>
                   </div>
                 </div>
@@ -464,13 +530,29 @@ export function TransactionImportModal(props: {
                   </Alert>
                 ) : null}
 
+                {parseWarnings.length > 0 ? (
+                  <Alert>
+                    <div className="space-y-1">
+                      <div className="font-medium">识别提示</div>
+                      <div className="text-sm text-muted-foreground">{parseWarnings.join('；')}</div>
+                    </div>
+                  </Alert>
+                ) : null}
+
                 <div className="max-h-[52vh] overflow-auto rounded-xl border border-border">
                   <div className="divide-y divide-border">
                     {drafts.map((d) => {
                       const invalid = !isValidDraft(d);
                       const dupe = !!d.sourceMeta?.duplicateOfId;
+                      const dupeExisting = !!d.sourceMeta?.duplicateOfExistingId;
                       return (
-                        <div key={d.id} className={cn('px-3 py-3', invalid ? 'bg-amber-500/10' : dupe ? 'bg-surface-2' : '')}>
+                        <div
+                          key={d.id}
+                          className={cn(
+                            'px-3 py-3',
+                            invalid ? 'bg-amber-500/10' : dupe ? 'bg-surface-2' : dupeExisting ? 'bg-indigo-500/10' : '',
+                          )}
+                        >
                           <div className="grid grid-cols-1 gap-2 md:grid-cols-[120px_140px_140px_1fr_auto] md:items-center">
                             <Select
                               value={d.type}
