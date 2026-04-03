@@ -5,7 +5,7 @@ import { useBudgetsForMonths } from '@/hooks/useBudgetsForMonths';
 import { useBudgetTemplates } from '@/hooks/useBudgetTemplates';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useCategories } from '@/hooks/useCategories';
-import { ChevronLeft, ChevronRight, Loader2, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -317,19 +317,20 @@ export default function FinanceBudgets() {
                         <ListRowTrailing className="sm:justify-end">
                           <div className="flex items-center gap-2 sm:justify-end">
                             <Button
-                              variant="secondary"
+                              variant="ghost"
                               size="sm"
-                              className="w-full sm:w-auto"
+                              className="h-9 w-9 p-0"
                               onClick={() => {
                                 openEditBudget(b);
                               }}
+                              aria-label="编辑"
                             >
-                              编辑
+                              <Pencil className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="w-full sm:w-auto"
+                              className="h-9 w-9 p-0"
                               disabled={isDeleting}
                               onClick={() => {
                                 requestDeleteBudget({ id: b.id, name: b.category_name });
