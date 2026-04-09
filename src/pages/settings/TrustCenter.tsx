@@ -1,7 +1,7 @@
 import { Shield, Lock, Eye, FileText, Database, MessageSquare } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
-import { Section } from '@/components/ui/section';
+import { Section, SectionTitle, SectionDescription } from '@/components/ui/section';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -14,10 +14,10 @@ const TrustCenter = () => {
       </PageHeader>
 
       <Section>
-        <Section.Title>我们的隐私承诺</Section.Title>
-        <Section.Description>
+        <SectionTitle>我们的隐私承诺</SectionTitle>
+        <SectionDescription>
           我们深知家庭数据的敏感性，承诺采取一切必要措施保护您的数据安全和隐私。
-        </Section.Description>
+        </SectionDescription>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Card>
@@ -101,8 +101,8 @@ const TrustCenter = () => {
       </Section>
 
       <Section>
-        <Section.Title>隐私保护措施</Section.Title>
-        <Section.Description>
+        <SectionTitle>隐私保护措施</SectionTitle>
+        <SectionDescription>
           我们采取多层次的隐私保护措施，确保您的数据安全。
         </Section.Description>
 
@@ -143,8 +143,8 @@ const TrustCenter = () => {
       </Section>
 
       <Section>
-        <Section.Title>安全审计与合规</Section.Title>
-        <Section.Description>
+        <SectionTitle>安全审计与合规</SectionTitle>
+        <SectionDescription>
           我们定期进行安全审计，确保系统符合行业标准和法规要求。
         </Section.Description>
 
@@ -196,8 +196,8 @@ const TrustCenter = () => {
       </Section>
 
       <Section>
-        <Section.Title>透明与沟通</Section.Title>
-        <Section.Description>
+        <SectionTitle>透明与沟通</SectionTitle>
+        <SectionDescription>
           我们致力于透明地处理您的数据，并随时解答您的疑问。
         </Section.Description>
 
@@ -241,8 +241,8 @@ const TrustCenter = () => {
       </Section>
 
       <Section>
-        <Section.Title>安全认证</Section.Title>
-        <Section.Description>
+        <SectionTitle>安全认证</SectionTitle>
+        <SectionDescription>
           我们正在申请相关安全认证，以进一步确保您的数据安全。
         </Section.Description>
 
