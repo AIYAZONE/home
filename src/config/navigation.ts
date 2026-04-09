@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { BarChart3, Bot, Download, Heart, LayoutDashboard, Receipt, PiggyBank, Repeat, Settings, Tags, Target, TrendingUp, UserPlus, Users, Wallet, CircleUser } from 'lucide-react';
+import { BarChart3, Bot, Download, Heart, LayoutDashboard, Receipt, PiggyBank, Repeat, Settings, Tags, Target, TrendingUp, UserPlus, Users, Wallet, CircleUser, Shield } from 'lucide-react';
 
 export type NavLinkNode = {
   kind?: 'link';
@@ -72,6 +72,7 @@ export const navigation: NavNode[] = [
       { name: '成员管理', href: '/settings/members', icon: Users },
       { name: '邀请管理', href: '/settings/invitations', icon: UserPlus },
       { name: '数据管理', href: '/settings/data', icon: Download },
+      { name: '信任中心', href: '/settings/trust', icon: Shield },
     ],
   },
 ];
