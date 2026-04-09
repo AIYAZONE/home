@@ -33,17 +33,64 @@ export default function SettingsData() {
     if (!profile?.family_id) return;
     setIsExporting(true);
     try {
-      const [transactionsRes, categoriesRes, budgetsRes, recurringRes] = await Promise.all([
+      const [
+        transactionsRes, 
+        categoriesRes, 
+        budgetsRes, 
+        recurringRes,
+        fundsRes,
+        allocationsRes,
+        allocationRulesRes,
+        balanceSheetRes,
+        growthGoalsRes,
+        growthKeyResultsRes,
+        healthProfilesRes,
+        healthMetricsRes,
+        insurancePoliciesRes,
+        actionItemsRes,
+        relationshipEventsRes,
+        externalContactsRes,
+        contactInteractionsRes,
+        memberRemarksRes
+      ] = await Promise.all([
         supabase.from('transactions').select('*').eq('family_id', profile.family_id).order('date', { ascending: false }),
         supabase.from('categories').select('*').eq('family_id', profile.family_id),
         supabase.from('budgets').select('*').eq('family_id', profile.family_id),
         supabase.from('recurring_transactions').select('*').eq('family_id', profile.family_id),
+        supabase.from('fund_accounts').select('*').eq('family_id', profile.family_id),
+        supabase.from('fund_allocations').select('*').eq('family_id', profile.family_id),
+        supabase.from('allocation_rules').select('*').eq('family_id', profile.family_id),
+        supabase.from('balance_sheet_items').select('*').eq('family_id', profile.family_id),
+        supabase.from('growth_goals').select('*').eq('family_id', profile.family_id),
+        supabase.from('growth_key_results').select('*'),
+        supabase.from('health_profiles').select('*').eq('family_id', profile.family_id),
+        supabase.from('health_metrics').select('*').eq('family_id', profile.family_id),
+        supabase.from('insurance_policies').select('*').eq('family_id', profile.family_id),
+        supabase.from('action_items').select('*').eq('family_id', profile.family_id),
+        supabase.from('relationship_events').select('*').eq('family_id', profile.family_id),
+        supabase.from('external_contacts').select('*').eq('family_id', profile.family_id),
+        supabase.from('contact_interactions').select('*'),
+        supabase.from('family_member_remarks').select('*').eq('family_id', profile.family_id)
       ]);
 
       if (transactionsRes.error) throw transactionsRes.error;
       if (categoriesRes.error) throw categoriesRes.error;
       if (budgetsRes.error) throw budgetsRes.error;
       if (recurringRes.error) throw recurringRes.error;
+      if (fundsRes.error) throw fundsRes.error;
+      if (allocationsRes.error) throw allocationsRes.error;
+      if (allocationRulesRes.error) throw allocationRulesRes.error;
+      if (balanceSheetRes.error) throw balanceSheetRes.error;
+      if (growthGoalsRes.error) throw growthGoalsRes.error;
+      if (growthKeyResultsRes.error) throw growthKeyResultsRes.error;
+      if (healthProfilesRes.error) throw healthProfilesRes.error;
+      if (healthMetricsRes.error) throw healthMetricsRes.error;
+      if (insurancePoliciesRes.error) throw insurancePoliciesRes.error;
+      if (actionItemsRes.error) throw actionItemsRes.error;
+      if (relationshipEventsRes.error) throw relationshipEventsRes.error;
+      if (externalContactsRes.error) throw externalContactsRes.error;
+      if (contactInteractionsRes.error) throw contactInteractionsRes.error;
+      if (memberRemarksRes.error) throw memberRemarksRes.error;
 
       const data = {
         exportDate: new Date().toISOString(),
@@ -55,6 +102,20 @@ export default function SettingsData() {
         categories: categoriesRes.data || [],
         budgets: budgetsRes.data || [],
         recurringTransactions: recurringRes.data || [],
+        fundAccounts: fundsRes.data || [],
+        fundAllocations: allocationsRes.data || [],
+        allocationRules: allocationRulesRes.data || [],
+        balanceSheetItems: balanceSheetRes.data || [],
+        growthGoals: growthGoalsRes.data || [],
+        growthKeyResults: growthKeyResultsRes.data || [],
+        healthProfiles: healthProfilesRes.data || [],
+        healthMetrics: healthMetricsRes.data || [],
+        insurancePolicies: insurancePoliciesRes.data || [],
+        actionItems: actionItemsRes.data || [],
+        relationshipEvents: relationshipEventsRes.data || [],
+        externalContacts: externalContactsRes.data || [],
+        contactInteractions: contactInteractionsRes.data || [],
+        familyMemberRemarks: memberRemarksRes.data || [],
       };
 
       let content: string;
@@ -109,6 +170,20 @@ export default function SettingsData() {
               categories: (categoriesRes.data || []).length,
               budgets: (budgetsRes.data || []).length,
               recurringTransactions: (recurringRes.data || []).length,
+              fundAccounts: (fundsRes.data || []).length,
+              fundAllocations: (allocationsRes.data || []).length,
+              allocationRules: (allocationRulesRes.data || []).length,
+              balanceSheetItems: (balanceSheetRes.data || []).length,
+              growthGoals: (growthGoalsRes.data || []).length,
+              growthKeyResults: (growthKeyResultsRes.data || []).length,
+              healthProfiles: (healthProfilesRes.data || []).length,
+              healthMetrics: (healthMetricsRes.data || []).length,
+              insurancePolicies: (insurancePoliciesRes.data || []).length,
+              actionItems: (actionItemsRes.data || []).length,
+              relationshipEvents: (relationshipEventsRes.data || []).length,
+              externalContacts: (externalContactsRes.data || []).length,
+              contactInteractions: (contactInteractionsRes.data || []).length,
+              familyMemberRemarks: (memberRemarksRes.data || []).length,
             },
           },
         });
