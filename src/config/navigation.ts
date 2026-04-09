@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { BarChart3, Bot, Download, Heart, LayoutDashboard, Receipt, PiggyBank, Repeat, Settings, Tags, Target, TrendingUp, UserPlus, Users, Wallet, CircleUser } from 'lucide-react';
+import { BarChart3, Bot, Download, Heart, LayoutDashboard, Receipt, PiggyBank, Repeat, Settings, Tags, Target, TrendingUp, UserPlus, Users, Wallet, CircleUser, Shield } from 'lucide-react';
 
 export type NavLinkNode = {
   kind?: 'link';
