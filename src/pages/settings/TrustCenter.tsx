@@ -104,7 +104,7 @@ const TrustCenter = () => {
         <SectionTitle>隐私保护措施</SectionTitle>
         <SectionDescription>
           我们采取多层次的隐私保护措施，确保您的数据安全。
-        </Section.Description>
+        </SectionDescription>
 
         <Card>
           <CardHeader>
@@ -146,7 +146,7 @@ const TrustCenter = () => {
         <SectionTitle>安全审计与合规</SectionTitle>
         <SectionDescription>
           我们定期进行安全审计，确保系统符合行业标准和法规要求。
-        </Section.Description>
+        </SectionDescription>
 
         <Card>
           <CardHeader>
@@ -199,7 +199,7 @@ const TrustCenter = () => {
         <SectionTitle>透明与沟通</SectionTitle>
         <SectionDescription>
           我们致力于透明地处理您的数据，并随时解答您的疑问。
-        </Section.Description>
+        </SectionDescription>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Card>
@@ -244,7 +244,7 @@ const TrustCenter = () => {
         <SectionTitle>安全认证</SectionTitle>
         <SectionDescription>
           我们正在申请相关安全认证，以进一步确保您的数据安全。
-        </Section.Description>
+        </SectionDescription>
 
         <Card>
           <CardHeader>
