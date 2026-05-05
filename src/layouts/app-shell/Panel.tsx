@@ -51,7 +51,8 @@ export function Panel(props: {
   return (
     <aside
       className={cn(
-        'fixed inset-y-0 left-16 z-40 hidden border-r border-border/60 bg-surface transition-[width] duration-300 ease-out lg:block',
+        'fixed inset-y-0 z-40 hidden border-r border-border/60 bg-surface transition-[width] duration-300 ease-out lg:block',
+        props.collapsed ? 'left-0' : 'left-16',
         props.collapsed ? 'w-0 overflow-hidden border-r-0' : 'w-72',
       )}
       aria-label="Module panel"

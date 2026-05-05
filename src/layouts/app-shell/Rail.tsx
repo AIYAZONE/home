@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import type { AppModule } from '@/config/navigation';
 
-export function Rail(props: { modules: AppModule[]; activeId: string; className?: string }) {
+export function Rail(props: { modules: AppModule[]; activeId: string; collapsed: boolean; className?: string }) {
   const [tooltip, setTooltip] = useState<null | { label: string; top: number; left: number }>(null);
   const anchorRef = useRef<HTMLElement | null>(null);
 
@@ -40,15 +40,21 @@ export function Rail(props: { modules: AppModule[]; activeId: string; className?
     };
   }, [tooltip]);
 
+  useEffect(() => {
+    if (!props.collapsed) return;
+    closeTooltip();
+  }, [props.collapsed]);
+
   return (
     <aside
       className={cn(
-        'fixed inset-y-0 left-0 z-50 hidden w-16 flex-col border-r border-border/60 bg-surface lg:flex',
+        'fixed inset-y-0 left-0 z-50 hidden flex-col border-r border-border/60 bg-surface transition-[width,opacity] duration-300 ease-out lg:flex',
+        props.collapsed ? 'w-0 overflow-hidden border-r-0 opacity-0 pointer-events-none' : 'w-16',
         props.className,
       )}
       aria-label="Modules"
     >
-      {tooltip
+      {!props.collapsed && tooltip
         ? createPortal(
             <div
               className="fixed z-[9999] -translate-y-1/2 whitespace-nowrap rounded-xl border border-border/60 bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-lg before:content-[''] before:absolute before:-left-2 before:top-1/2 before:-translate-y-1/2 before:border-y-8 before:border-y-transparent before:border-r-8 before:border-r-border/60 after:content-[''] after:absolute after:-left-[7px] after:top-1/2 after:-translate-y-1/2 after:border-y-[7px] after:border-y-transparent after:border-r-[7px] after:border-r-popover"

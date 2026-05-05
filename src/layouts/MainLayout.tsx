@@ -56,7 +56,9 @@ export default function MainLayout() {
   const activeModule = useMemo(() => modules.find((m) => m.id === activeModuleId) ?? modules[0], [activeModuleId, modules]);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [panelCollapsed, setPanelCollapsed] = useState(() => readBool('ui.panelCollapsed', false));
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    readBool('ui.sidebarCollapsed', readBool('ui.panelCollapsed', false)),
+  );
   const [commandOpen, setCommandOpen] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [copilotPinned, setCopilotPinned] = useState(() => readBool('ui.copilotPinned', false));
@@ -64,9 +66,10 @@ export default function MainLayout() {
   const [draftById, setDraftById] = useState<Record<string, CopilotDraft>>({});
 
   const quickActions = moduleQuickActions[activeModule?.id ?? ''] ?? [];
-  const togglePanelCollapsed = () => {
-    setPanelCollapsed((prev) => {
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
       const next = !prev;
+      writeBool('ui.sidebarCollapsed', next);
       writeBool('ui.panelCollapsed', next);
       return next;
     });
@@ -196,7 +199,7 @@ export default function MainLayout() {
     return [...aiCommands, ...quickCommands, ...linkCommands];
   }, [isDark, modules, navigate, toggleTheme]);
 
-  const contentPaddingLeft = panelCollapsed ? 'lg:pl-16' : 'lg:pl-[352px]';
+  const contentPaddingLeft = sidebarCollapsed ? 'lg:pl-0' : 'lg:pl-[352px]';
   const contentPaddingRight = copilotPinned ? 'lg:pr-[360px]' : '';
   const copilotVisible = copilotPinned || copilotOpen;
 
@@ -334,18 +337,18 @@ export default function MainLayout() {
   return (
     <CopilotProvider value={copilotApi}>
       <div className="min-h-screen bg-background dark:bg-[radial-gradient(60%_35%_at_50%_-10%,hsl(var(--ring)/0.18),transparent_60%)]">
-        <Rail modules={modules} activeId={activeModuleId} />
+        <Rail modules={modules} activeId={activeModuleId} collapsed={sidebarCollapsed} />
         {activeModule ? (
           <Panel
             module={activeModule}
             pathname={location.pathname}
-            collapsed={panelCollapsed}
+            collapsed={sidebarCollapsed}
             quickActions={quickActions}
-            onToggleCollapsed={togglePanelCollapsed}
+            onToggleCollapsed={toggleSidebarCollapsed}
           />
         ) : null}
 
-        <PanelEdgeToggle collapsed={panelCollapsed} onToggle={togglePanelCollapsed} />
+        <PanelEdgeToggle collapsed={sidebarCollapsed} onToggle={toggleSidebarCollapsed} />
 
         <MobileDrawer
           open={drawerOpen}
