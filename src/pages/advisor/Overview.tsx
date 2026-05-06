@@ -68,16 +68,23 @@ export default function AdvisorOverview() {
               openWithDraft(text);
               setDraft('');
             }}
-            className="flex flex-col gap-2 sm:flex-row sm:items-center"
+            className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3"
           >
-            <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="描述你的目标或问题…" />
-            <Button type="submit" className="sm:w-auto">
-              <Sparkles className="h-4 w-4" />
-              开始
-            </Button>
-            <Button type="button" variant="secondary" onClick={open} className="sm:w-auto">
-              打开 AI 面板
-            </Button>
+            <Input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="描述你的目标或问题…"
+              className="min-w-0 sm:w-auto sm:flex-1"
+            />
+            <div className="flex gap-2 sm:shrink-0">
+              <Button type="submit" className="whitespace-nowrap sm:w-auto">
+                <Sparkles className="h-4 w-4" />
+                开始
+              </Button>
+              <Button type="button" variant="secondary" onClick={open} className="whitespace-nowrap sm:w-auto">
+                打开 AI 面板
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
