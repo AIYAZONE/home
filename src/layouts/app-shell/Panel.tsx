@@ -105,7 +105,14 @@ export function Panel(props: {
               <div className="grid grid-cols-1 gap-2">
                 {props.quickActions.map((a) => {
                   const Icon = a.icon;
-                  const href = a.action ? `${a.href}?action=${encodeURIComponent(a.action)}` : a.href;
+                  const href = (() => {
+                    if (!a.action) return a.href;
+                    const [path, queryString = ''] = a.href.split('?');
+                    const params = new URLSearchParams(queryString);
+                    if (!params.has('action')) params.set('action', a.action);
+                    const query = params.toString();
+                    return query ? `${path}?${query}` : path;
+                  })();
                   return (
                     <Link key={a.id} to={href}>
                       <Card className="transition-colors hover:border-primary/30 hover:bg-surface-2">

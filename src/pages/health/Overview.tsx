@@ -15,6 +15,13 @@ import { Input } from '@/components/ui/input';
 import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
 import { Select } from '@/components/ui/select';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useSearchParams } from 'react-router-dom';
+import { HealthReportImportModal } from '@/components/health/HealthReportImportModal';
+import { HealthAlertsCard } from '@/components/health/HealthAlertsCard';
+import { HealthMedicationCard } from '@/components/health/HealthMedicationCard';
+import { HealthRevisitCard } from '@/components/health/HealthRevisitCard';
+import { HealthCheckPlanCard } from '@/components/health/HealthCheckPlanCard';
+import { HealthRecordCenterCard } from '@/components/health/HealthRecordCenterCard';
 
 const metricConfig: Record<HealthMetric['metric_key'], { label: string; unit: string }> = {
   weight_kg: { label: '体重', unit: 'kg' },
@@ -89,6 +96,17 @@ export default function HealthOverview() {
   const [metricDate, setMetricDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [metricValue, setMetricValue] = useState('');
   const [metricNote, setMetricNote] = useState('');
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    const action = searchParams.get('action');
+    if (action !== 'import') return;
+    setIsImportOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     setMetricValue('');
@@ -136,6 +154,9 @@ export default function HealthOverview() {
           <PageDescription>为家庭成员建立档案、记录指标，并用可解释规则给出保险建议。</PageDescription>
         </div>
         <PageActions>
+          <Button variant="secondary" disabled={!subjectUserId} onClick={() => setIsImportOpen(true)}>
+            导入体检报告
+          </Button>
           {isParentLike ? (
             <Select
               className="w-full sm:w-56"
@@ -384,6 +405,17 @@ export default function HealthOverview() {
           </div>
         </CardContent>
       </Card>
+
+      <HealthAlertsCard subjectUserId={subjectUserId || null} />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <HealthMedicationCard subjectUserId={subjectUserId || null} />
+        <HealthRevisitCard subjectUserId={subjectUserId || null} />
+      </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <HealthCheckPlanCard subjectUserId={subjectUserId || null} />
+        <HealthRecordCenterCard subjectUserId={subjectUserId || null} />
+      </div>
+      <HealthReportImportModal open={isImportOpen} onClose={() => setIsImportOpen(false)} subjectUserId={subjectUserId || null} />
       {dialog}
     </Page>
   );

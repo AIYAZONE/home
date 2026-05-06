@@ -150,6 +150,7 @@ export const moduleQuickActions: Record<string, ModuleQuickAction[]> = {
   ],
   '/health': [
     { id: 'health.overview', name: '查看概览', description: '健康中心概览', href: '/health', icon: Heart },
+    { id: 'health.import-report', name: '导入报告', description: '上传体检报告并自动识别', href: '/health?action=import', icon: Download, action: 'import' },
   ],
   '/relationships': [
     { id: 'relationships.overview', name: '查看概览', description: '关系管理概览', href: '/relationships', icon: Users },

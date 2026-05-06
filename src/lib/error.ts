@@ -8,6 +8,7 @@ export type AppErrorCode =
   | 'ALREADY_IN_FAMILY'
   | 'DUPLICATE'
   | 'NETWORK'
+  | 'TIMEOUT'
   | 'MISSING_FAMILY'
   | 'MISSING_SUPABASE_CONFIG'
   | 'INVALID_LOGIN'
@@ -29,6 +30,7 @@ const codeToMessageKey: Record<AppErrorCode, MessageKey> = {
   ALREADY_IN_FAMILY: 'error.alreadyInFamily',
   DUPLICATE: 'error.duplicate',
   NETWORK: 'error.network',
+  TIMEOUT: 'error.network',
   MISSING_FAMILY: 'error.missingFamily',
   MISSING_SUPABASE_CONFIG: 'error.missingSupabaseConfig',
   INVALID_LOGIN: 'error.invalidLogin',
@@ -91,6 +93,7 @@ export function toAppErrorCode(input: unknown): AppErrorCode {
   if (message.startsWith('Supabase configuration is missing:')) return 'MISSING_SUPABASE_CONFIG';
 
   if (message.includes('Failed to fetch') || message.includes('NetworkError')) return 'NETWORK';
+  if (message.includes('超时') || message.toLowerCase().includes('timeout')) return 'TIMEOUT';
 
   if (message.includes('Invalid login credentials')) return 'INVALID_LOGIN';
   if (message.includes('Email not confirmed')) return 'EMAIL_NOT_CONFIRMED';

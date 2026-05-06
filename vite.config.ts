@@ -114,6 +114,60 @@ function localAiApiPlugin(): Plugin {
   };
 }
 
+function localHealthApiPlugin(): Plugin {
+  return {
+    name: 'local-health-api',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/health-reports/parse', async (req, res) => {
+        if ((req.method ?? 'GET').toUpperCase() !== 'POST') {
+          res.statusCode = 405;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ message: '不支持的请求方法。' }));
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(String(c))));
+        req.on('end', async () => {
+          let body: unknown = undefined;
+          try {
+            const raw = Buffer.concat(chunks).toString('utf8');
+            body = raw ? JSON.parse(raw) : undefined;
+          } catch {
+            body = undefined;
+          }
+
+          const { default: handler } = await import('./api/health-reports/parse');
+          let statusCode = 200;
+          const respLike = {
+            status(code: number) {
+              statusCode = code;
+              return respLike;
+            },
+            setHeader(key: string, value: string) {
+              res.setHeader(key, value);
+            },
+            json(payload: unknown) {
+              res.statusCode = statusCode;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify(payload));
+            },
+          };
+
+          try {
+            await handler({ method: req.method, headers: req.headers as any, body }, respLike as any);
+          } catch {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ message: '解析失败，请稍后再试。' }));
+          }
+        });
+      });
+    },
+  };
+}
+
 function localAccountApiPlugin(): Plugin {
   return {
     name: 'local-account-api',
@@ -188,6 +242,7 @@ export default defineConfig(({ mode }) => {
       }),
       localBillsApiPlugin(),
       localAiApiPlugin(),
+      localHealthApiPlugin(),
       localAccountApiPlugin(),
       VitePWA({
         registerType: 'prompt',

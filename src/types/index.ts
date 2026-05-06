@@ -214,6 +214,131 @@ export interface InsurancePolicy {
   updated_at: string;
 }
 
+export interface HealthReportFile {
+  id: string;
+  family_id: string;
+  subject_user_id: string;
+  created_by_user_id: string | null;
+  report_type: 'checkup' | 'lab' | 'prescription';
+  source_type: 'pdf' | 'image';
+  file_path: string;
+  file_name: string;
+  mime_type: string;
+  file_size: number | null;
+  checksum: string | null;
+  captured_at: string | null;
+  parse_status: 'pending' | 'parsed' | 'failed' | 'confirmed';
+  parse_error: string | null;
+  confidence_summary: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HealthReportItem {
+  id: string;
+  report_file_id: string;
+  metric_code: string;
+  metric_name: string;
+  value_text: string | null;
+  value_num: number | null;
+  unit: string | null;
+  reference_low: number | null;
+  reference_high: number | null;
+  reference_text: string | null;
+  abnormal_flag: 'high' | 'low' | 'normal' | 'unknown';
+  confidence: number | null;
+  source_page: number | null;
+  raw_line: string | null;
+  created_at: string;
+}
+
+export interface HealthMetricRecord {
+  id: string;
+  family_id: string;
+  subject_user_id: string;
+  report_file_id: string | null;
+  metric_code: string;
+  metric_name: string;
+  value_num: number;
+  unit: string | null;
+  recorded_at: string;
+  reference_low: number | null;
+  reference_high: number | null;
+  reference_text: string | null;
+  abnormal_flag: 'high' | 'low' | 'normal' | 'unknown';
+  note: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HealthFollowup {
+  id: string;
+  family_id: string;
+  subject_user_id: string;
+  report_file_id: string | null;
+  source_type: 'report_abnormal' | 'manual' | 'ai';
+  priority: 'high' | 'medium' | 'low';
+  status: 'todo' | 'doing' | 'done' | 'dismissed';
+  title: string;
+  description: string | null;
+  suggested_action: string | null;
+  due_date: string | null;
+  resolved_at: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HealthMedication {
+  id: string;
+  family_id: string;
+  subject_user_id: string;
+  medication_name: string;
+  dosage: string | null;
+  frequency: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  reminder_rule: Record<string, unknown>;
+  status: 'active' | 'paused' | 'stopped';
+  notes: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HealthRevisit {
+  id: string;
+  family_id: string;
+  subject_user_id: string;
+  related_report_file_id: string | null;
+  department: string | null;
+  hospital: string | null;
+  revisit_reason: string | null;
+  revisit_date: string;
+  status: 'scheduled' | 'done' | 'cancelled' | 'missed';
+  notes: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HealthCheckPlan {
+  id: string;
+  family_id: string;
+  subject_user_id: string;
+  plan_type: 'checkup' | 'lab' | 'vaccination' | 'other';
+  title: string;
+  cadence: 'monthly' | 'quarterly' | 'yearly' | 'custom';
+  next_due_date: string;
+  last_completed_date: string | null;
+  status: 'active' | 'paused' | 'completed';
+  notes: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ActionItem {
   id: string;
   family_id: string;
