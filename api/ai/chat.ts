@@ -1,7 +1,7 @@
-import { authGetUser } from '../_lib/supabaseAuthCompat';
-import { ChatRequestSchema, CopilotResponseSchema } from '../_lib/aiSchemas';
-import { pickToolId, runTool } from '../_lib/aiTools';
-import { toSafeMessage } from '../_lib/aiOpenAiCompat';
+import { authGetUser } from '../_lib/supabaseAuthCompat.js';
+import { ChatRequestSchema, CopilotResponseSchema } from '../_lib/aiSchemas.js';
+import { pickToolId, runTool } from '../_lib/aiTools.js';
+import { toSafeMessage } from '../_lib/aiOpenAiCompat.js';
 
 type RequestLike = {
   method?: string;

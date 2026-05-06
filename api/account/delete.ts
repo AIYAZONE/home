@@ -1,4 +1,4 @@
-import { authAdminDeleteUser, authGetUser } from '../_lib/supabaseAuthCompat';
+import { authAdminDeleteUser, authGetUser } from '../_lib/supabaseAuthCompat.js';
 
 type RequestLike = {
   method?: string;

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { CopilotResponseSchema, type CopilotResponse } from './aiSchemas';
-import { callOpenAiCompatChatJson } from './aiOpenAiCompat';
+import { CopilotResponseSchema, type CopilotResponse } from './aiSchemas.js';
+import { callOpenAiCompatChatJson } from './aiOpenAiCompat.js';
 
 export type ToolContext = {
   traceId: string;

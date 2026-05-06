@@ -1,4 +1,4 @@
-import { authGetUser } from '../_lib/supabaseAuthCompat';
+import { authGetUser } from '../_lib/supabaseAuthCompat.js';
 import { z } from 'zod';
 
 type RequestLike = {
