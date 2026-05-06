@@ -114,7 +114,7 @@ const TrustCenter = () => {
           <CardContent>
             <div className="space-y-4">
               <div className="flex items-start gap-3">
-                <Badge variant="secondary" className="mt-0.5">P0</Badge>
+                <Badge variant="default" className="mt-0.5">P0</Badge>
                 <div>
                   <h4 className="font-medium">高敏感数据</h4>
                   <p className="text-sm text-muted-foreground">包括交易金额、健康记录、家庭矛盾等非常私密的信息</p>
@@ -122,7 +122,7 @@ const TrustCenter = () => {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <Badge variant="secondary" className="mt-0.5">P1</Badge>
+                <Badge variant="default" className="mt-0.5">P1</Badge>
                 <div>
                   <h4 className="font-medium">敏感数据</h4>
                   <p className="text-sm text-muted-foreground">包括邮箱、姓名、家庭名称等可识别信息</p>
@@ -130,7 +130,7 @@ const TrustCenter = () => {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <Badge variant="secondary" className="mt-0.5">P2</Badge>
+                <Badge variant="default" className="mt-0.5">P2</Badge>
                 <div>
                   <h4 className="font-medium">低敏感数据</h4>
                   <p className="text-sm text-muted-foreground">包括主题偏好、语言设置等不涉及隐私的信息</p>

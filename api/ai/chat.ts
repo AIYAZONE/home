@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import { authGetUser } from '../_lib/supabaseAuthCompat';
 import { ChatRequestSchema, CopilotResponseSchema } from '../_lib/aiSchemas';
 import { pickToolId, runTool } from '../_lib/aiTools';
@@ -83,6 +82,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       return res.status(500).json({ message: '服务配置缺失，请联系管理员。', traceId: t });
     }
 
+    const { createClient } = await import('@supabase/supabase-js');
     const anonClient = createClient(url, anonKey, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     });

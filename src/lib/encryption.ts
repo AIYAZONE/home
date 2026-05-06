@@ -80,13 +80,13 @@ export function decrypt(encryptedData: string, password: string): string {
  * @returns 加密后的对象
  */
 export function encryptSensitiveFields<T extends Record<string, any>>(obj: T, password: string, sensitiveFields: string[]): T {
-  const result = { ...obj };
-  sensitiveFields.forEach(field => {
+  const result: Record<string, any> = { ...obj };
+  sensitiveFields.forEach((field) => {
     if (result[field] !== undefined && result[field] !== null) {
       result[field] = encrypt(String(result[field]), password);
     }
   });
-  return result;
+  return result as T;
 }
 
 /**
@@ -97,8 +97,8 @@ export function encryptSensitiveFields<T extends Record<string, any>>(obj: T, pa
  * @returns 解密后的对象
  */
 export function decryptSensitiveFields<T extends Record<string, any>>(obj: T, password: string, sensitiveFields: string[]): T {
-  const result = { ...obj };
-  sensitiveFields.forEach(field => {
+  const result: Record<string, any> = { ...obj };
+  sensitiveFields.forEach((field) => {
     if (result[field] !== undefined && result[field] !== null) {
       try {
         result[field] = decrypt(String(result[field]), password);
@@ -108,7 +108,7 @@ export function decryptSensitiveFields<T extends Record<string, any>>(obj: T, pa
       }
     }
   });
-  return result;
+  return result as T;
 }
 
 /**
