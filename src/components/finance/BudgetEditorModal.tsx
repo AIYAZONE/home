@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,8 +58,8 @@ export function BudgetEditorModal(props: {
   const canEditCategory = props.mode === 'add';
   const datalistId = 'budget-editor-category-options';
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={props.onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={props.onClose}>
       <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
         <Card>
           <CardHeader className="pb-3">
@@ -150,6 +151,7 @@ export function BudgetEditorModal(props: {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

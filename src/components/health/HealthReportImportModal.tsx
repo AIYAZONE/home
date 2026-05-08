@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2, Upload, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -218,9 +219,9 @@ export function HealthReportImportModal(props: {
     }
   };
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center"
       onClick={onClose}
     >
       <div className="w-full max-w-4xl" onClick={(e) => e.stopPropagation()}>
@@ -374,6 +375,7 @@ export function HealthReportImportModal(props: {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

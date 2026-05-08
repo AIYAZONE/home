@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Upload, Trash2, Copy, Sparkles, Ban, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -316,9 +317,9 @@ export function TransactionImportModal(props: {
 
   const canSubmit = drafts.length > 0 && invalidCount === 0 && !isImporting;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center"
       onClick={props.onClose}
       onPaste={(e) => {
         const files = Array.from(e.clipboardData?.files ?? []);
@@ -643,6 +644,7 @@ export function TransactionImportModal(props: {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
@@ -252,8 +253,8 @@ export default function FinanceRecurring() {
         </PageActions>
       </PageHeader>
 
-      {isEditorOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={closeEditor}>
+      {isEditorOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={closeEditor}>
           <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
             <Card>
               <CardHeader className="pb-3">
@@ -447,7 +448,8 @@ export default function FinanceRecurring() {
               </CardContent>
             </Card>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {dueRecurringTransactions.length > 0 && (

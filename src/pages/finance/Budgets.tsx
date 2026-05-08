@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useBudgets } from '@/hooks/useBudgets';
 import { useBudgetsForMonths } from '@/hooks/useBudgetsForMonths';
@@ -494,8 +495,8 @@ export default function FinanceBudgets() {
         }
       />
 
-      {confirmDeleteBudget && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={() => setConfirmDeleteBudget(null)}>
+      {confirmDeleteBudget && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={() => setConfirmDeleteBudget(null)}>
           <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <Card>
               <CardHeader className="pb-3">
@@ -525,11 +526,12 @@ export default function FinanceBudgets() {
               </CardContent>
             </Card>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {confirmDeleteTemplate && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={() => setConfirmDeleteTemplate(null)}>
+      {confirmDeleteTemplate && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={() => setConfirmDeleteTemplate(null)}>
           <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <Card>
               <CardHeader className="pb-3">
@@ -555,7 +557,8 @@ export default function FinanceBudgets() {
               </CardContent>
             </Card>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </Page>
   );

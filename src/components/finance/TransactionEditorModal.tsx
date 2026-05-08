@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, X } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
@@ -132,7 +133,8 @@ export function TransactionEditorModal(props: {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={props.onClose}>
+      {createPortal(
+      <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onClick={props.onClose}>
         <div className="w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
           <Card>
           <CardHeader className="pb-3">
@@ -366,7 +368,9 @@ export function TransactionEditorModal(props: {
           </CardContent>
           </Card>
         </div>
-      </div>
+      </div>,
+      document.body,
+      )}
       {dialog}
     </>
   );

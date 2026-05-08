@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
 import { useAllocationRules } from '@/hooks/useAllocationRules';
 import { AllocationRule, FundAccount, FundAllocation } from '@/types';
-import { ArrowDownUp, Loader2, Plus, Shield, Target, Sparkles, Trash2, Pencil, TrendingUp, ChevronDown, ChevronUp, Info, Lightbulb, AlertTriangle, CheckCircle2, X } from 'lucide-react';
+import { RefreshCw, Loader2, Plus, Shield, Target, Sparkles, Trash2, Pencil, TrendingUp, ChevronDown, ChevronUp, Info, Lightbulb, AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatMoney, formatPercent } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -361,7 +361,19 @@ export default function FundManager() {
   const totalCurrent = (funds ?? []).reduce((acc, f) => acc + Number(f.current_amount), 0);
   const totalProgress = totalTarget > 0 ? (totalCurrent / totalTarget) * 100 : 0;
 
-  const fundsByKind = (funds ?? []).reduce((acc, f) => {
+  const kindOrder: FundKind[] = ['safety', 'goal', 'dream'];
+
+  const sortedFunds = useMemo(() => {
+    return [...(funds ?? [])].sort((a, b) => {
+      const kindDiff = kindOrder.indexOf(a.kind) - kindOrder.indexOf(b.kind);
+      if (kindDiff !== 0) return kindDiff;
+      const priorityDiff = Number(a.priority) - Number(b.priority);
+      if (priorityDiff !== 0) return priorityDiff;
+      return String(a.created_at).localeCompare(String(b.created_at));
+    });
+  }, [funds]);
+
+  const fundsByKind = sortedFunds.reduce((acc, f) => {
     if (!acc[f.kind]) acc[f.kind] = [];
     acc[f.kind].push(f);
     return acc;
@@ -679,53 +691,76 @@ export default function FundManager() {
             ) : (funds ?? []).length === 0 ? (
               <div className="text-sm text-muted-foreground">创建基金后才能设置存钱计划规则。</div>
             ) : (
-              <div className="space-y-2">
-                {(funds ?? []).map((fund) => {
-                  const cfg = fundKindConfig[fund.kind];
-                  const rule = ruleByFundId[fund.id];
-                  const isActive = !!rule?.is_active;
-                  const pct = isActive ? Number(rule?.percentage ?? 0) : 0;
-                  const isReached = isFundReachedTarget(fund);
+              <div className="space-y-3">
+                {kindOrder.map((kind) => {
+                  const kindFunds = [...(fundsByKind[kind] || [])].sort((a, b) => {
+                    const aRule = ruleByFundId[a.id];
+                    const bRule = ruleByFundId[b.id];
+                    const aPriority = aRule ? Number(aRule.priority) : Number(a.priority);
+                    const bPriority = bRule ? Number(bRule.priority) : Number(b.priority);
+                    if (aPriority !== bPriority) return aPriority - bPriority;
+                    return String(a.created_at).localeCompare(String(b.created_at));
+                  });
+                  if (kindFunds.length === 0) return null;
+
+                  const kindCfg = fundKindConfig[kind];
                   return (
-                    <div key={fund.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/40 p-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="truncate font-medium">{fund.name}</div>
-                          <Badge variant="default" className="text-xs">{cfg.label}</Badge>
-                          {isReached ? (
-                            <Badge variant="success" className="text-xs">已达标</Badge>
-                          ) : null}
-                          {isActive ? (
-                            <Badge variant="success" className="text-xs">{formatPercent(pct, 0)}</Badge>
-                          ) : (
-                            <Badge variant="default" className="text-xs">未启用</Badge>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground">优先级 {rule ? rule.priority : fund.priority}</div>
-                        {isReached && isActive ? (
-                          <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">已达标仍在分配，建议暂停该规则。</div>
-                        ) : null}
+                    <div key={kind} className="rounded-xl border border-border/60 bg-background/40 p-3">
+                      <div className="mb-3 flex items-center gap-2 border-b border-border/70 pb-2">
+                        <Badge variant="default" className="text-xs">{kindCfg.label}</Badge>
+                        <span className="text-xs text-muted-foreground">按优先级排序</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" variant="secondary" onClick={() => openRuleEditor(fund)}>
-                          <Pencil className="h-4 w-4" />
-                          {rule ? '编辑' : '设置'}
-                        </Button>
-                        {rule ? (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={async () => {
-                              const ok = await openConfirm({ title: '确认删除', message: '确认删除该规则吗？', confirmText: '删除', tone: 'danger' });
-                              if (!ok) return;
-                              deleteRule(rule.id);
-                            }}
-                            disabled={isDeletingRule}
-                            aria-label="删除规则"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        ) : null}
+                      <div className="space-y-2">
+                        {kindFunds.map((fund) => {
+                          const cfg = fundKindConfig[fund.kind];
+                          const rule = ruleByFundId[fund.id];
+                          const isActive = !!rule?.is_active;
+                          const pct = isActive ? Number(rule?.percentage ?? 0) : 0;
+                          const isReached = isFundReachedTarget(fund);
+                          return (
+                            <div key={fund.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-background p-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <div className="truncate font-medium">{fund.name}</div>
+                                  <Badge variant="default" className="text-xs">{cfg.label}</Badge>
+                                  {isReached ? (
+                                    <Badge variant="success" className="text-xs">已达标</Badge>
+                                  ) : null}
+                                  {isActive ? (
+                                    <Badge variant="success" className="text-xs">{formatPercent(pct, 0)}</Badge>
+                                  ) : (
+                                    <Badge variant="default" className="text-xs">未启用</Badge>
+                                  )}
+                                </div>
+                                <div className="text-xs text-muted-foreground">优先级 {rule ? rule.priority : fund.priority}</div>
+                                {isReached && isActive ? (
+                                  <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">已达标仍在分配，建议暂停该规则。</div>
+                                ) : null}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button size="sm" variant="secondary" onClick={() => openRuleEditor(fund)}>
+                                  <Pencil className="h-4 w-4" />
+                                  {rule ? '编辑' : '设置'}
+                                </Button>
+                                {rule ? (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={async () => {
+                                      const ok = await openConfirm({ title: '确认删除', message: '确认删除该规则吗？', confirmText: '删除', tone: 'danger' });
+                                      if (!ok) return;
+                                      deleteRule(rule.id);
+                                    }}
+                                    disabled={isDeletingRule}
+                                    aria-label="删除规则"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -874,7 +909,7 @@ export default function FundManager() {
                                 </div>
                                 <div className="flex flex-wrap items-center justify-end gap-1">
                                   <Button variant="ghost" size="sm" onClick={() => openAdjust(fund)}>
-                                    <ArrowDownUp className="h-4 w-4" />
+                                    <RefreshCw className="h-4 w-4" />
                                   </Button>
                                   <Button variant="ghost" size="sm" onClick={() => openEdit(fund)}>
                                     <Pencil className="h-4 w-4" />
@@ -915,12 +950,12 @@ export default function FundManager() {
         {(isAdding || isEditing) &&
           createPortal(
             <div
-              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 py-5 backdrop-blur-sm"
               onClick={closeFundForm}
               role="dialog"
               aria-modal="true"
             >
-              <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="w-full max-w-4xl" onClick={(e) => e.stopPropagation()}>
                 <Card className="border border-border/60 bg-popover shadow-lg">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-3">
@@ -948,7 +983,7 @@ export default function FundManager() {
 
                         <div className="space-y-1.5">
                           <label className="text-sm font-medium text-foreground">基金类型 *</label>
-                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                             {(Object.entries(fundKindConfig) as Array<[FundKind, (typeof fundKindConfig)[FundKind]]>).map(([key, cfg]) => {
                               const Icon = cfg.icon;
                               return (
@@ -957,7 +992,7 @@ export default function FundManager() {
                                   type="button"
                                   onClick={() => setFormKind(key)}
                                   className={cn(
-                                    'min-h-11 flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2 text-sm font-medium transition-all',
+                                    'min-h-11 flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2 text-sm font-medium whitespace-nowrap transition-all',
                                     formKind === key
                                       ? cn(cfg.bgColor, cfg.color, 'ring-2 ring-primary/50', cfg.borderColor)
                                       : 'bg-muted/50 hover:bg-muted border border-transparent'
@@ -1001,11 +1036,11 @@ export default function FundManager() {
                         </div>
                       </div>
 
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" variant="secondary" onClick={closeFundForm}>
+                      <div className="flex flex-nowrap justify-end gap-2">
+                        <Button type="button" variant="secondary" onClick={closeFundForm} className="shrink-0">
                           取消
                         </Button>
-                        <Button type="submit" disabled={createFundMutation.isPending || updateFundMutation.isPending}>
+                        <Button type="submit" disabled={createFundMutation.isPending || updateFundMutation.isPending} className="shrink-0">
                           {createFundMutation.isPending || updateFundMutation.isPending ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : null}
