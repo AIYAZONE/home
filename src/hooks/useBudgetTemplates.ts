@@ -80,14 +80,48 @@ export function useBudgetTemplates() {
     },
   });
 
+  const saveMonthAsTemplatesMutation = useMutation({
+    mutationFn: async (payload: { budgets: Array<{ category_id?: string | null; category_name: string; amount: number }> }) => {
+      if (!profile?.family_id) throw new Error('缺少家庭信息');
+      const rows = payload.budgets
+        .map((b) => ({
+          family_id: profile.family_id,
+          category_id: b.category_id ?? null,
+          category_name: b.category_name.trim(),
+          method: 'fixed',
+          amount: Number(b.amount),
+          start_month: null,
+          end_month: null,
+          priority: 100,
+          active: true,
+          updated_at: new Date().toISOString(),
+        }))
+        .filter((r) => r.category_name && Number.isFinite(r.amount) && r.amount > 0);
+
+      if (rows.length === 0) throw new Error('本月没有可保存的预算（金额需大于 0）');
+
+      const { error } = await supabase.from('budget_templates').upsert(rows, { onConflict: 'family_id,category_name' });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['budget_templates'] });
+      pushToast({ variant: 'success', title: '已保存为模板', message: '下个月会优先按模板自动生成预算。' });
+    },
+    onError: (err: any) => {
+      pushToast({ variant: 'danger', title: '保存失败', message: toUserMessage(err) });
+    },
+  });
+
   return {
     templates: query.data,
     isLoading: query.isLoading,
     error: query.error,
     upsertTemplate: upsertMutation.mutate,
     deleteTemplate: deleteMutation.mutate,
+    saveMonthBudgetsAsTemplates: saveMonthAsTemplatesMutation.mutate,
+    saveMonthBudgetsAsTemplatesAsync: saveMonthAsTemplatesMutation.mutateAsync,
     isUpserting: upsertMutation.isPending,
     isDeleting: deleteMutation.isPending,
+    isSavingMonthAsTemplates: saveMonthAsTemplatesMutation.isPending,
   };
 }
-

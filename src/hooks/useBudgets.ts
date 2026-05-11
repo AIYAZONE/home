@@ -16,10 +16,6 @@ export function useBudgets(monthStart?: string) {
     queryKey: ['budgets', profile?.family_id, monthStartKey],
     queryFn: async () => {
       if (!profile?.family_id) return [];
-      const { error: ensureError } = await supabase.rpc('ensure_month_budgets', { p_month_start: monthStartKey });
-      if (ensureError) {
-        void ensureError;
-      }
       const { data, error } = await supabase
         .from('budgets')
         .select('*')
@@ -84,6 +80,38 @@ export function useBudgets(monthStart?: string) {
     },
   });
 
+  const applyTemplatesMutation = useMutation({
+    mutationFn: async (payload: { templates: Array<{ category_id?: string | null; category_name: string; amount: number }>; overwrite?: boolean }) => {
+      if (!profile?.family_id) throw new Error('缺少家庭信息');
+      const rows = payload.templates
+        .map((t) => ({
+          family_id: profile.family_id,
+          month_start: monthStartKey,
+          category_id: t.category_id ?? null,
+          category_name: t.category_name.trim(),
+          amount: Number(t.amount),
+          source: 'template',
+          updated_at: new Date().toISOString(),
+        }))
+        .filter((r) => r.category_name && Number.isFinite(r.amount) && r.amount > 0);
+
+      if (rows.length === 0) return;
+
+      const { error } = await supabase.from('budgets').upsert(rows, {
+        onConflict: 'family_id,month_start,category_name',
+        ignoreDuplicates: !payload.overwrite,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['budgets'] });
+      pushToast({ variant: 'success', title: '已应用模板', message: '本月预算已更新。' });
+    },
+    onError: (err: any) => {
+      pushToast({ variant: 'danger', title: '应用失败', message: toUserMessage(err) });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('budgets').delete().eq('id', id);
@@ -108,8 +136,11 @@ export function useBudgets(monthStart?: string) {
     upsertBudgetAsync: upsertMutation.mutateAsync,
     deleteBudget: deleteMutation.mutate,
     deleteBudgetAsync: deleteMutation.mutateAsync,
+    applyTemplatesToMonth: applyTemplatesMutation.mutate,
+    applyTemplatesToMonthAsync: applyTemplatesMutation.mutateAsync,
     isEnsuring: ensureMutation.isPending,
     isUpserting: upsertMutation.isPending,
     isDeleting: deleteMutation.isPending,
+    isApplyingTemplates: applyTemplatesMutation.isPending,
   };
 }
