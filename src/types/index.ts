@@ -394,3 +394,42 @@ export interface ContactInteraction {
   created_at: string;
   updated_at: string;
 }
+
+
+// ---- 膳食 / 「今天吃什么」 ----
+export type MealSlot = 'breakfast' | 'lunch' | 'dinner';
+
+export interface MealDish {
+  name: string;
+  why: string;
+}
+
+export interface MealPlanData {
+  breakfast: MealDish[];
+  lunch: MealDish[];
+  dinner: MealDish[];
+  shopping_hint?: string;
+  notes?: string;
+}
+
+export interface MealRemoved {
+  meal: MealSlot;
+  name: string;
+  reason: string;
+}
+
+export interface MealRecommendResponse {
+  plan: MealPlanData;
+  removed: MealRemoved[];
+  notes?: string;
+}
+
+export interface MealPreference {
+  id: string;
+  family_id: string;
+  subject_user_id: string;
+  disliked?: string | null;
+  liked?: string | null;
+  spicy_level?: 'none' | 'mil' | 'med' | 'hot' | null;
+  notes?: string | null;
+}
