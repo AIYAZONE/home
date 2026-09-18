@@ -14,6 +14,7 @@ import { Page, PageActions, PageDescription, PageHeader, PageTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ActionInboxCard } from '@/pages/dashboard/ActionInboxCard';
+import { TodayPlanCard } from '@/components/meals/TodayPlanCard';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -149,7 +150,10 @@ export default function Dashboard() {
         </PageActions>
       </PageHeader>
 
-      <ActionInboxCard />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ActionInboxCard />
+        <TodayPlanCard />
+      </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
