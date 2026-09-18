@@ -5,7 +5,7 @@ export function mergeSwap(base: RawPlan, regenerated: RawPlan, meal: MealSlot): 
     breakfast: meal === 'breakfast' ? regenerated.breakfast : base.breakfast,
     lunch: meal === 'lunch' ? regenerated.lunch : base.lunch,
     dinner: meal === 'dinner' ? regenerated.dinner : base.dinner,
-    shopping_hint: regenerated.shopping_hint ?? base.shopping_hint,
-    notes: regenerated.notes ?? base.notes,
+    shopping_hint: regenerated.shopping_hint?.trim() || base.shopping_hint,
+    notes: regenerated.notes?.trim() || base.notes,
   };
 }

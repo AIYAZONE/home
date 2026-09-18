@@ -17,7 +17,7 @@ export type ConstraintSet = {
 
 export function splitCsv(text?: string | null): string[] {
   return (text ?? '')
-    .split(/[,，、;；\s]+/)
+    .split(/[,，、;；/|\s]+/)
     .map((s) => s.trim())
     .filter(Boolean);
 }

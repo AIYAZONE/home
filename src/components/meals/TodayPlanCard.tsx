@@ -5,7 +5,16 @@ import { useMealPlan } from '@/hooks/useMealPlan';
 import type { MealPlanData, MealSlot } from '@/types';
 
 function ymd(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function shiftDays(d: Date, days: number): Date {
+  const next = new Date(d);
+  next.setDate(next.getDate() + days);
+  return next;
 }
 
 function slotSummary(plan: MealPlanData | null, slot: MealSlot): string {
@@ -16,8 +25,9 @@ function slotSummary(plan: MealPlanData | null, slot: MealSlot): string {
 }
 
 export function TodayPlanCard() {
-  const today = ymd(new Date());
-  const yesterday = ymd(new Date(Date.now() - 86400000));
+  const now = new Date();
+  const today = ymd(now);
+  const yesterday = ymd(shiftDays(now, -1));
   const { plan: todayPlan, isLoading: loadingToday } = useMealPlan(today);
   const { plan: yesterdayPlan } = useMealPlan(yesterday);
 

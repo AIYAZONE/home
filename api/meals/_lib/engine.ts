@@ -18,6 +18,11 @@ export function assembleResponse(args: {
     return { plan, removed, notes: plan.notes };
   }
 
+  // 非换菜：三餐全空视为无效响应（通常是 AI 返回了错误信封），抛出以触发重试
+  if (parsed.breakfast.length + parsed.lunch.length + parsed.dinner.length === 0) {
+    throw new Error('empty plan');
+  }
+
   const { plan, removed } = guardAllergens(parsed, args.constraints.allergens);
   return { plan, removed, notes: plan.notes };
 }

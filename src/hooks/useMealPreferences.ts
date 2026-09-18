@@ -45,7 +45,7 @@ export function useMealPreferences(subjectUserId: string | null) {
       return data as MealPreference;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['meal_preferences'] });
+      queryClient.invalidateQueries({ queryKey: ['meal_preferences', profile?.family_id, subjectUserId] });
       pushToast({ variant: 'success', title: '已保存', message: '口味偏好已更新。' });
     },
     onError: (err: any) => {

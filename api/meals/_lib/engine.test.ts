@@ -14,6 +14,10 @@ describe('assembleResponse', () => {
   it('throws on invalid json', () => {
     expect(() => assembleResponse({ jsonText: '{not json', constraints: c })).toThrow();
   });
+  it('throws when all meals are empty (non-swap)', () => {
+    const jsonText = JSON.stringify({ unexpected: 'envelope' });
+    expect(() => assembleResponse({ jsonText, constraints: c })).toThrow();
+  });
   it('swap merges only target meal', () => {
     const base = { breakfast: [{ name: '粥', why: '' }], lunch: [{ name: '面', why: '' }], dinner: [{ name: '饭', why: '' }] };
     const jsonText = JSON.stringify({ lunch: [{ name: '沙拉', why: '换' }] });

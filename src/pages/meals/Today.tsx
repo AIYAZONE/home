@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
 import { useRecommendMeals, type RecommendMealsInput } from '@/hooks/useRecommendMeals';
 import { useMealPlan } from '@/hooks/useMealPlan';
+import { useProfile } from '@/hooks/useProfile';
 import { toUserMessage } from '@/lib/error';
 import type { MealPlanData, MealRemoved, MealSlot } from '@/types';
 
@@ -21,7 +22,11 @@ const SLOTS: { key: MealSlot; label: string; icon: typeof Sun }[] = [
 ];
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export default function MealsToday() {
@@ -41,6 +46,20 @@ export default function MealsToday() {
 
   const { recommend, isPending, error: recommendError } = useRecommendMeals();
   const { plan: savedPlan, savePlan, isSaving } = useMealPlan(date);
+  const { data: profile } = useProfile();
+  const canGenerate = profile?.role === 'admin' || profile?.role === 'parent';
+
+  const mergeRemoved = (prev: MealRemoved[], added: MealRemoved[]): MealRemoved[] => {
+    const seen = new Set(prev.map((r) => `${r.meal}-${r.name}`));
+    const next = [...prev];
+    for (const r of added) {
+      const key = `${r.meal}-${r.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      next.push(r);
+    }
+    return next;
+  };
 
   // 进入页面或切换日期时，回填已存档的今日方案
   useEffect(() => {
@@ -74,7 +93,7 @@ export default function MealsToday() {
     try {
       const res = await recommend(buildInput({ swap: { meal, dish }, basePlan: plan }));
       setPlan(res.plan);
-      setRemoved((prev) => [...prev, ...(res.removed ?? [])]);
+      setRemoved((prev) => mergeRemoved(prev, res.removed ?? []));
     } catch {
       // 忽略，内联错误提示已覆盖
     } finally {
@@ -135,7 +154,7 @@ export default function MealsToday() {
             </label>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={handleRecommend} disabled={!consented || isPending}>
+            <Button onClick={handleRecommend} disabled={!consented || !canGenerate || isPending}>
               <Sparkles className="h-4 w-4" />
               {isPending ? '生成中…' : '推荐今日三餐'}
             </Button>
@@ -146,6 +165,9 @@ export default function MealsToday() {
               </Button>
             )}
           </div>
+          {!canGenerate && (
+            <p className="text-xs text-muted-foreground">需要家长或管理员账号才能生成全家的三餐方案。</p>
+          )}
         </CardContent>
       </Card>
 
@@ -153,7 +175,7 @@ export default function MealsToday() {
         <Alert variant="danger">
           <div className="flex items-center justify-between gap-3">
             <span>{showError}</span>
-            <Button size="sm" variant="secondary" onClick={handleRecommend} disabled={!consented || isPending}>
+            <Button size="sm" variant="secondary" onClick={handleRecommend} disabled={!consented || !canGenerate || isPending}>
               <RefreshCw className="h-4 w-4" />
               再试一次
             </Button>
@@ -257,6 +279,10 @@ export default function MealsToday() {
 
       {plan?.notes && (
         <p className="text-xs text-muted-foreground">{plan.notes}</p>
+      )}
+
+      {plan && (
+        <p className="text-xs text-muted-foreground">以上为 AI 生成的用餐建议，不替代医生或营养师的专业意见。</p>
       )}
 
       {!consented && (

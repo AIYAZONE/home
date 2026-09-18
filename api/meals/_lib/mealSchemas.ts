@@ -21,7 +21,7 @@ export type RawPlan = z.infer<typeof RawPlanSchema>;
 
 export const RecommendRequestSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  servingUserIds: z.array(z.string()).optional(),
+  servingUserIds: z.array(z.string().uuid()).max(50).optional(),
   adhocIngredients: z.string().max(500).optional(),
   direction: z.string().max(200).optional(),
   swap: z.object({ meal: MealSlot, dish: z.string().min(1) }).optional(),
