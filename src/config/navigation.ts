@@ -71,6 +71,7 @@ export const navigation: NavNode[] = [
       { name: '账户中心', href: '/settings/account', icon: CircleUser },
       { kind: 'heading', name: '家庭' },
       { name: '成员管理', href: '/settings/members', icon: Users },
+      { name: '口味偏好', href: '/settings/taste', icon: Utensils },
       { name: '邀请管理', href: '/settings/invitations', icon: UserPlus },
       { name: '数据管理', href: '/settings/data', icon: Download },
       { name: '信任中心', href: '/settings/trust', icon: Shield },
