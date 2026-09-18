@@ -22,6 +22,7 @@ import FinanceFunds from '@/pages/finance/Funds';
 import GrowthOverview from '@/pages/growth/Overview';
 import GrowthGoals from '@/pages/growth/Goals';
 import HealthOverview from '@/pages/health/Overview';
+import MealsToday from '@/pages/meals/Today';
 import RelationshipsOverview from '@/pages/relationships/Overview';
 import SettingsOverview from '@/pages/settings/Overview';
 import SettingsMembers from '@/pages/settings/Members';
@@ -67,6 +68,7 @@ export default function App() {
                     <Route path="growth" element={<GrowthOverview />} />
                     <Route path="growth/goals" element={<GrowthGoals />} />
                     <Route path="health" element={<HealthOverview />} />
+                    <Route path="meals" element={<MealsToday />} />
                     <Route path="relationships" element={<RelationshipsOverview />} />
                     <Route path="advisor" element={<AdvisorOverview />} />
                     <Route path="settings" element={<SettingsOverview />} />

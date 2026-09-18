@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { BarChart3, Bot, Download, Heart, LayoutDashboard, Receipt, PiggyBank, Repeat, Settings, Tags, Target, TrendingUp, UserPlus, Users, Wallet, CircleUser, Shield } from 'lucide-react';
+import { BarChart3, Bot, Download, Heart, LayoutDashboard, Receipt, PiggyBank, Repeat, Settings, Tags, Target, TrendingUp, UserPlus, Users, Wallet, CircleUser, Shield, Utensils } from 'lucide-react';
 
 export type NavLinkNode = {
   kind?: 'link';
@@ -30,6 +30,7 @@ export type NavTab = {
 
 export const navigation: NavNode[] = [
   { name: '仪表板', href: '/dashboard', icon: LayoutDashboard },
+  { name: '今天吃什么', href: '/meals', icon: Utensils },
   {
     kind: 'group',
     name: '财务中心',
