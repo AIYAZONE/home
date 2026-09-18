@@ -165,7 +165,7 @@ export default function MealsToday() {
               </Button>
             )}
           </div>
-          {!canGenerate && (
+          {profile && !canGenerate && (
             <p className="text-xs text-muted-foreground">需要家长或管理员账号才能生成全家的三餐方案。</p>
           )}
         </CardContent>
@@ -239,16 +239,18 @@ export default function MealsToday() {
                             <div className="text-sm font-medium text-foreground">{dish.name}</div>
                             {dish.why && <div className="mt-0.5 text-xs text-muted-foreground">{dish.why}</div>}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => handleSwap(slot.key, dish.name)}
-                            disabled={isPending}
-                            className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground disabled:opacity-50"
-                            aria-label={`换掉${dish.name}`}
-                            title="换一个"
-                          >
-                            <RefreshCw className={`h-4 w-4 ${swapping ? 'animate-spin' : ''}`} />
-                          </button>
+                          {canGenerate && (
+                            <button
+                              type="button"
+                              onClick={() => handleSwap(slot.key, dish.name)}
+                              disabled={isPending}
+                              className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground disabled:opacity-50"
+                              aria-label={`换掉${dish.name}`}
+                              title="换一个"
+                            >
+                              <RefreshCw className={`h-4 w-4 ${swapping ? 'animate-spin' : ''}`} />
+                            </button>
+                          )}
                         </div>
                       );
                     })
