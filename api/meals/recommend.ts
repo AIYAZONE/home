@@ -1,5 +1,6 @@
 import { authGetUser } from '../_lib/supabaseAuthCompat.js';
 import { callRoutedChat } from '../ai/_lib/aiProviderRouter.js';
+import { trimJsonEnvelope } from '../_lib/aiOpenAiCompat.js';
 import { RecommendRequestSchema } from './_lib/mealSchemas.js';
 import type { MealSlot } from './_lib/mealSchemas.js';
 import { buildConstraints } from './_lib/constraints.js';
@@ -43,10 +44,10 @@ function limit(key: string, cap: number, winMs: number): boolean {
 
 const SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner'];
 
-async function callAI(system: string, user: string, traceId: string): Promise<string> {
+async function callAI(system: string, user: string, traceId: string): Promise<{ content: string; provider: string }> {
   const { content, provider } = await callRoutedChat('text', { system, user, temperature: 0.6, responseFormatJson: true });
   console.log('[api/meals/recommend] ai-call', { traceId, provider: provider.name, model: provider.model, costTier: provider.costTier });
-  return content;
+  return { content: trimJsonEnvelope(content), provider: provider.name };
 }
 
 export default async function handler(req: RequestLike, res: ResponseLike) {
@@ -117,13 +118,16 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
     // 自用阶段：把底层错误摘要透出到 message，便于前端直接定位（不含密钥）
     let jsonText: string;
     let lastAiError = '';
+    let usedProvider = '';
     try {
-      jsonText = await callAI(system, userPrompt, traceId);
+      const r1 = await callAI(system, userPrompt, traceId);
+      jsonText = r1.content; usedProvider = r1.provider;
     } catch (e1) {
       lastAiError = e1 instanceof Error ? e1.message : String(e1);
       console.error('[api/meals/recommend] ai attempt 1', { traceId, message: lastAiError });
       try {
-        jsonText = await callAI(system, userPrompt + '\n注意：请严格输出规定 JSON 结构。', traceId);
+        const r2 = await callAI(system, userPrompt + '\n注意：请严格输出规定 JSON 结构。', traceId);
+        jsonText = r2.content; usedProvider = r2.provider;
       } catch (e2) {
         const m2 = e2 instanceof Error ? e2.message : String(e2);
         console.error('[api/meals/recommend] ai attempt 2', { traceId, message: m2 });
@@ -145,8 +149,9 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
         if (result.plan[slot].length > 0) continue;
         try {
           const retryUser = buildUserPrompt({ c: constraints, date, mealOnly: slot, exclude: result.removed.map((r) => r.name) });
-          const regenText = await callAI(system, retryUser, traceId);
-          const extra = assembleResponse({ jsonText: regenText, constraints });
+          const regen = await callAI(system, retryUser, traceId);
+          usedProvider = regen.provider;
+          const extra = assembleResponse({ jsonText: regen.content, constraints });
           if (extra.plan[slot].length > 0) result.plan[slot] = extra.plan[slot];
         } catch {
           /* 补菜失败：保留被剔除结果，前端显示提示 */
@@ -154,7 +159,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       }
     }
 
-    return res.status(200).json(result);
+    return res.status(200).json({ ...result, provider: usedProvider });
   } catch (err: unknown) {
     console.error('[api/meals/recommend] unhandled', { traceId, message: err instanceof Error ? err.message : String(err) });
     return res.status(500).json({ message: '请求失败，请稍后再试。', traceId });

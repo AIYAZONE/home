@@ -181,7 +181,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       if (base64.length > 10_000_000) {
         return res.status(413).json({ message: '图片过大，请压缩后再试。', traceId: t });
       }
-      // 视觉链路：env 兑底链仅 text 能力，故未配 vision 模型时链为空→友好提示（评审批 B vision 精确匹配护栏）
+      // 视觉链路：env 兜底链仅 text 能力，故未配 vision 模型时链为空→友好提示（评审批 B vision 精确匹配护栏）
       const visionChain = await getProviderChain('vision');
       if (visionChain.length === 0) {
         return res.status(400).json({ message: '尚未配置视觉模型，请在 设置 → AI 模型管理 中添加 vision 模型。', traceId: t });

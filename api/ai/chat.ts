@@ -1,7 +1,7 @@
 import { authGetUser } from '../_lib/supabaseAuthCompat.js';
 import { ChatRequestSchema, CopilotResponseSchema } from '../_lib/aiSchemas.js';
 import { pickToolId, runTool } from '../_lib/aiTools.js';
-import { toSafeMessage } from '../_lib/aiOpenAiCompat.js';
+import { toSafeMessage, trimJsonEnvelope } from '../_lib/aiOpenAiCompat.js';
 import { callRoutedChat } from './_lib/aiProviderRouter.js';
 
 type RequestLike = {
@@ -113,17 +113,20 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       return res.status(400).json({ message: '请求参数不合法。', traceId: t });
     }
 
+    let routedProvider = '';
     const { toolId, confidence } = await pickToolId({
       message: parsed.data.message,
       module: parsed.data.module,
       provider: 'deepseek', // 兼容旧必填字段；实际调用走 callJson 注入的路由层
       callJson: async ({ system, user, temperature }) => {
         const { content, provider } = await callRoutedChat('text', { system, user, temperature, responseFormatJson: true });
+        routedProvider = provider.name;
         console.log('[api/ai/chat] ai-call', { traceId: t, provider: provider.name, model: provider.model, costTier: provider.costTier });
-        return content;
+        return trimJsonEnvelope(content);
       },
       traceId: t,
     });
+    console.log('[api/ai/chat] route', { traceId: t, toolId, confidence });
 
     const result = await runTool({
       toolId,
@@ -140,7 +143,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
 
     const safe = CopilotResponseSchema.parse({
       ...result,
-      meta: { ...(result.meta ?? {}), toolId, confidence, traceId: t },
+      meta: { ...(result.meta ?? {}), toolId, confidence, provider: routedProvider, traceId: t },
     });
 
     return res.status(200).json(safe);

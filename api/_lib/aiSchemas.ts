@@ -25,6 +25,7 @@ export const CopilotResponseSchema = z.object({
       traceId: z.string().min(1),
       toolId: z.string().optional(),
       confidence: z.number().min(0).max(1).optional(),
+      provider: z.string().optional(),
     })
     .optional(),
 });

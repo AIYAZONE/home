@@ -7,7 +7,7 @@ export class AiUpstreamError extends Error {
   }
 }
 
-function trimJsonEnvelope(text: string): string {
+export function trimJsonEnvelope(text: string): string {
   const s = text.trim();
   const start = s.indexOf('{');
   const end = s.lastIndexOf('}');
