@@ -33,6 +33,8 @@ alter table public.ai_providers
 -- 归属 + 能力 + 启用 + 优先级：路由链解析与「我的/共享」列表都走它。
 create index if not exists idx_ai_providers_owner_cap on public.ai_providers(owner_user_id, capability, enabled, priority asc);
 create index if not exists idx_ai_providers_shared on public.ai_providers(capability, enabled, priority asc) where owner_user_id is null;
+-- v1 残留清理：旧 (enabled, priority) 索引已被上面两个 v2 索引取代（终审 #7；全新库 no-op，粘 dashboard 可重跑）
+drop index if exists public.idx_ai_providers_enabled_priority;
 
 -- 每个用户每能力的默认模型选择（可指向共享行或自己私有行）。
 create table if not exists public.user_model_prefs (

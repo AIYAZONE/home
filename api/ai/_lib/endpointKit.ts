@@ -50,11 +50,13 @@ export async function skeleton(
     if ((req.method ?? 'GET').toUpperCase() !== opts.method) {
       return res.status(405).json({ message: '不支持的请求方法。', traceId: t });
     }
-    if (opts.write && !limit(`${tracePrefix}:${clientIp(req.headers)}`, 30, 60_000)) {
-      return res.status(429).json({ message: '操作过于频繁，请稍后再试。', traceId: t });
-    }
+    // 先鉴权后限流（终审 #2，对齐 spec §6「每 user 限流」）：v2 全体登录用户可写，
+    // 若按 IP 计数，同一家庭出口 IP 的多用户会互相打满 429；键改用 userId，IP 仅作伪造滥用兜底（宽阈值）。
     const guard = await requireUser({ headers: req.headers ?? {} });
     if (guard.error) return res.status(guard.error.status).json({ message: guard.error.message, traceId: t });
+    if (opts.write && (!limit(`${tracePrefix}:u:${guard.ctx.userId}`, 30, 60_000) || !limit(`${tracePrefix}:ip:${clientIp(req.headers)}`, 120, 60_000))) {
+      return res.status(429).json({ message: '操作过于频繁，请稍后再试。', traceId: t });
+    }
     await handler(guard.ctx, t);
   } catch (err: unknown) {
     console.error(`[api/${tracePrefix}]`, { traceId: t, message: err instanceof Error ? err.message : String(err) });

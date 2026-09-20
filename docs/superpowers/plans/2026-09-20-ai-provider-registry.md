@@ -1,5 +1,7 @@
 # AI 模型清单管理（免费算力优先）实施计划
 
+> ⚠️ **本计划正文已过时（v1，含 `platform_admins` 建表 SQL与超管门控语义）。实际实现以 v2 版 spec 为准：`docs/superpowers/specs/2026-09-20-ai-provider-registry-design.md`。若需重跑数据库，请粘 `supabase/migrations/20260920000000_ai_provider_registry.sql` 的最终内容，切勿粘贴本文件中的 SQL。**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把大模型 provider 配置从 `.env` 硬编码迁移为 DB 驱动的平台级模型清单：管理界面自由增删改（免费/收费均可绑定），运行时按优先级路由、429/失败自动降级、付费兜底。

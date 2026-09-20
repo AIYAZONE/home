@@ -189,7 +189,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       // 视觉链路：env 兜底链仅 text 能力，故未配 vision 模型时链为空→友好提示（评审批 B vision 精确匹配护栏）
       const visionChain = await getProviderChain('vision', userData.user.id);
       if (visionChain.length === 0) {
-        return res.status(400).json({ message: '尚未配置视觉模型，请在 设置 → AI 模型管理 中添加 vision 模型。', traceId: t });
+        return res.status(400).json({ message: '尚未配置视觉模型，请在 设置 → 我的 AI 模型 中添加 vision 模型。', traceId: t });
       }
       const routed = await callRoutedChat('vision', {
         system: '你是账单识别引擎。请从用户提供的银行账单截图中提取交易明细，输出严格 JSON 对象，不要输出多余文本。',

@@ -146,14 +146,15 @@ export default function SettingsAiProviders() {
     );
   };
 
-  // 徽标比对加 capability 一致性防御：共享行被池管理员改能力后，prefs 指向该行也不挂错槽位徽标（评审批3 M-1）
+  // 徽标比对加 capability 一致性 + enabled 防御（批3评审 M-1 / 终审 #4）：
+  // 停用行不参与路由，不得挂「当前默认」徽标；共享行被改能力后也不挂错槽位徽标
   const defaultBadgeFlags = (row: PublicProvider) => ({
-    isTextDefault: row.capability === 'text' && defaults.text === row.id,
-    isVisionDefault: row.capability === 'vision' && defaults.vision === row.id,
+    isTextDefault: row.enabled && row.capability === 'text' && defaults.text === row.id,
+    isVisionDefault: row.enabled && row.capability === 'vision' && defaults.vision === row.id,
   });
 
   const renderRow = (row: PublicProvider, index: number, list: PublicProvider[], manageable: boolean) => {
-    const isDefault = defaults[row.capability] === row.id;
+    const isDefault = row.enabled && defaults[row.capability] === row.id;
     return (
       <ListRow key={row.id}>
         <ListRowLeading>

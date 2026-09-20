@@ -47,12 +47,18 @@ export async function runChain(opts: {
   now: () => number;
   cooldownMs: number;
   cooldownMap?: Map<string, number>;
+  budgetMs?: number;
   onResult?: (p: ResolvedProvider, ok: boolean, status: number) => void;
 }): Promise<{ content: string; provider: ResolvedProvider }> {
   // 不传 cooldownMap 时为本轮局部表（不跨轮持久化）；生产路由层传入模块级共享表。
   const cooldown = opts.cooldownMap ?? new Map<string, number>();
   const now = opts.now();
+  // 整链预算（spec §5.2）：v2 链变长（个人域⊕共享域），最坏 N×15s 会超出端点 maxDuration 被平台杀掉；
+  // 超预算即放弃剩余项抛链耗尽同款错误，让用户拿到「AI 服务繁忙 + traceId」而非网关超时。
+  const startAt = now;
+  const budgetMs = opts.budgetMs ?? 45_000;
   for (const provider of opts.chain) {
+    if (opts.now() - startAt > budgetMs) break;
     if (isCoolingDown(cooldown, provider.id, now)) continue;
     try {
       const { content } = await opts.call(provider, opts.request);

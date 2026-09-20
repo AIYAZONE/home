@@ -45,7 +45,7 @@
 - 共享池写权限：环境变量 `AI_SHARED_POOL_EMAILS` 邮箱白名单（取代超管角色）。
 - 运行时路由层：`api/_lib/aiProviderRouter.ts`（链解析 + 降级 + 冷却 + 缓存）。
 - 管理 API：`api/ai/providers/`（list / create / update / delete / reorder / test）。
-- 管理界面：设置 → 「AI 模型管理」（`/settings/ai-providers`），含测试连通按钮。
+- 管理界面：设置 → 「我的 AI 模型」（`/settings/ai-providers`），含测试连通按钮与「设为默认」。
 - 5 个 AI 消费端点切换到路由层入口。
 - `.env` 兜底过渡逻辑与 `.env.example` 更新。
 
@@ -162,6 +162,8 @@ callRoutedChat(capability, request, { userId }): Promise<{ content, provider }>
 
 `getProviderChain` 查表结果为空（表不存在或 0 行 enabled）时，回落到现行为：按 `AI_LLM_PROVIDER` 构造单元素链（DeepSeek/OpenAI 的 env 配置）。DB 有数据后 env provider 变量完全忽略。`.env.example` 更新为：标注 provider 变量「已废弃，改用管理界面」、新增 `AI_PROVIDER_ENC_KEY`。
 
+v2 语义注记（终审 #8）：「查表结果为空」在 v2 下重读为「该用户可见链为空」——若用户有 ≥1 条可解密启用行，即使其 key 全坏也不再回落 `.env`，直接抛「AI 服务繁忙 + traceId」。运维含义：共享池未预置时，用户自填坏 key 会失去 `.env` 后援，属已接受的个人优先降级自然推论。
+
 ## 6. 管理 API：`api/ai/providers/`
 
 | 端点 | 方法 | 说明 |
@@ -171,7 +173,7 @@ callRoutedChat(capability, request, { userId }): Promise<{ content, provider }>
 | `api/ai/providers/update.ts` | PATCH | 字段级更新；apiKey 留空=不改。**只能改自己 owned 行；共享行需白名单邮箱**；写后清缓存 |
 | `api/ai/providers/delete.ts` | POST | 物理删除 + 清缓存。同上归属校验（方法用 POST，与账户删除端点及 serverless 约定一致） |
 | `api/ai/providers/reorder.ts` | POST | 接收有序 id 数组重写 priority；仅允许重排调用者可管理（自己 owned，或白名单下共享）的行 |
-| `api/ai/providers/test.ts` | POST | 对可见行发一次最小 chat 请求，回传 `{status, latencyMs, detail?}`；写 test_* 同受归属限制（非管理员不能写共享行测试态） |
+| `api/ai/providers/test.ts` | POST | 对可见行发一次最小 chat 请求，回传 `{status, latencyMs, detail?}`；写 test_* 同受归属限制（非白名单用户不能写共享行测试态） |
 | `api/ai/providers/set-default.ts` | POST | **v2 新增**：`{capability, provider_id}` → 校验 provider 对该用户可见后，upsert `user_model_prefs` |
 
 统一守卫（每个端点第一段，v2）：
@@ -206,7 +208,7 @@ callRoutedChat(capability, request, { userId }): Promise<{ content, provider }>
 
 - `aiProviderRouter.test.ts`：链过滤（enabled/capability/排序）、429→冷却→降级下一家、401→跳过不冷却、冷却窗口过期恢复、链耗尽错误、60s 缓存命中、空表→env 兜底单元素链、整链超时预算。
 - `providerSecret.test.ts`：加解密往返、篡改密文抛错、掩码生成规则。
-- `providersGuard.test.ts`：非管理员 403 / 未登录 401（管理员判定经 service role 查询注入 mock）。
+- `adminGuard.test.ts`：未登录 401 / `isSharedPoolAdmin` 邮箱白名单解析 / `decideManage` 三态（自己行 ok、共享行×非白名单 403、他人私有行 gone 统一 400）/ userId 异常为 null 不绕过白名单（v2）。
 - 现有 `allergenGuard.test.ts` 等回归不受影响。
 
 ### 9.2 手工验收（本地 dev server + 中间件注册新端点）
@@ -215,7 +217,7 @@ callRoutedChat(capability, request, { userId }): Promise<{ content, provider }>
 2. 界面录入智谱免费 key → 推荐请求日志命中 `provider=智谱免费`；
 3. 故意填错 key → 测试按钮 ✗，调用链自动跳过该项降级到下一家；
 4. 模拟 429（临时把 rate 阈值调低或 mock）→ 观察冷却 + 降级到 paid 项；
-5. 非管理员账号 → 设置页无入口、直达 URL 被守卫拦截、直调管理 API 403。
+5. 任意登录用户 → 设置 → 「我的 AI 模型」可见可管理自己私有行；共享行只读但可「设为默认」；非白名单用户直调共享行写 API 403、直调他人私有行 API 统一 400「不存在」。
 
 ### 9.3 验收标准（端到端）
 

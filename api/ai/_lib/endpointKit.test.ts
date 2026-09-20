@@ -56,6 +56,19 @@ describe('skeleton', () => {
     expect(res.code).toBe(429);
   });
 
+  it('限流按用户计（终审 #2）：同 IP 下 u1 打满不影响 u2', async () => {
+    const req = { method: 'POST', headers: { 'x-forwarded-for': '9.9.9.9' } };
+    guardMock.mockResolvedValue({ ctx: { userId: 'u1', email: 'a@b.test' } } as any);
+    for (let i = 0; i < 31; i += 1) {
+      await skeleton('writeIso', req, makeRes(), { method: 'POST', write: true }, vi.fn().mockResolvedValue(undefined));
+    }
+    // u1 此时已超阈值；同 IP 的 u2 不应被连坐
+    guardMock.mockResolvedValue({ ctx: { userId: 'u2', email: 'c@d.test' } } as any);
+    const res = makeRes();
+    await skeleton('writeIso', req, res, { method: 'POST', write: true }, vi.fn().mockResolvedValue(undefined));
+    expect(res.code).not.toBe(429);
+  });
+
   it('handler 抛技术型错误（无中文）→ 400 安全文案 + traceId，不泄露原始错误', async () => {
     guardMock.mockResolvedValue({ ctx: { userId: 'u1', email: 'a@b.test' } } as any);
     const res = makeRes();

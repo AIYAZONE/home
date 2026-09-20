@@ -123,6 +123,12 @@ export async function getProviderChain(
       if (i > 0) chain = [chain[i], ...chain.slice(0, i), ...chain.slice(i + 1)];
     }
     if (chain.length > 0) {
+      // v2 键为能力×用户，条目数不再像 v1 那样天然有界：写入前惰性清扫过期条目，
+      // 防已解密明文 key 随已退出用户在高寿命 warm 实例内存中无界堆积（终审 #1）
+      if (cache.size > 500) {
+        const cutoff = Date.now();
+        for (const [k, v] of cache) if (v.until <= cutoff) cache.delete(k);
+      }
       cache.set(key, { until: now + CACHE_TTL_MS, chain });
       return chain;
     }

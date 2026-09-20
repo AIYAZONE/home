@@ -87,6 +87,16 @@ describe('runChain', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
+  it('整链预算耗尽（spec §5.2）：超 45s 后不再尝试剩余项，抛链耗尽同款错误', async () => {
+    let t = 0;
+    const call = vi.fn(async () => { t += 30_000; throw up(429); }); // 每次调用耗时 30s
+    await expect(runChain({
+      chain: [p('a'), p('b'), p('c')], request: { system: 's', user: 'u' }, call, now: () => t,
+      cooldownMs: 1, cooldownMap: new Map(), budgetMs: 45_000,
+    })).rejects.toBeInstanceOf(AllProvidersUnavailableError);
+    expect(call).toHaveBeenCalledTimes(2); // a（0→30s）、b（30s 入口未超预算）被调；c 入口 60s > 45s 被预算剪掉
+  });
+
   it('onResult 对成功与失败各回调一次', async () => {
     const events: string[] = [];
     const call = vi.fn().mockRejectedValueOnce(up(429)).mockResolvedValueOnce({ content: 'b' });
