@@ -31,6 +31,7 @@ import SettingsAccount from '@/pages/settings/Account';
 import SettingsInvitations from '@/pages/settings/Invitations';
 import SettingsData from '@/pages/settings/Data';
 import SettingsTrustCenter from '@/pages/settings/TrustCenter';
+import SettingsAiProviders from '@/pages/settings/AiProviders';
 import { supabaseConfig } from '@/lib/supabase';
 import { ToastHost } from '@/components/ui/toast';
 import PwaNetworkToasts from '@/components/PwaNetworkToasts';
@@ -79,6 +80,7 @@ export default function App() {
                     <Route path="settings/data" element={<SettingsData />} />
                     <Route path="settings/account" element={<SettingsAccount />} />
                     <Route path="settings/trust" element={<SettingsTrustCenter />} />
+                    <Route path="settings/ai-providers" element={<SettingsAiProviders />} />
                   </Route>
                 </Route>
               </Route>

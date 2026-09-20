@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AppModule, ModuleQuickAction, NavLinkNode, NavNode } from '@/config/navigation';
 import { Button } from '@/components/ui/button';
+import { useAiProviders } from '@/hooks/useAiProviders';
 
 type Section = { heading?: string; links: NavLinkNode[] };
 
@@ -14,7 +15,7 @@ function isLink(node: NavNode): node is NavLinkNode {
   return 'href' in node;
 }
 
-function buildSections(children: NavNode[]): Section[] {
+function buildSections(children: NavNode[], isAdmin: boolean): Section[] {
   const sections: Section[] = [];
   let current: Section | null = null;
   for (const child of children) {
@@ -24,6 +25,7 @@ function buildSections(children: NavNode[]): Section[] {
       continue;
     }
     if (!isLink(child)) continue;
+    if (child.adminOnly && !isAdmin) continue;
     if (!current) {
       current = { links: [] };
       sections.push(current);
@@ -47,7 +49,8 @@ export function MobileDrawer(props: {
 }) {
   const activeModule = props.modules.find((m) => m.id === props.activeModuleId) ?? props.modules[0];
   const group = activeModule?.node.kind === 'group' ? activeModule.node : null;
-  const sections = group ? buildSections(group.children) : [];
+  const { isAdmin } = useAiProviders();
+  const sections = group ? buildSections(group.children, isAdmin) : [];
 
   return (
     <>
