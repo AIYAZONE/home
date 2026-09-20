@@ -35,7 +35,7 @@ function errText(err: unknown): { message: string; traceId?: string } {
 }
 
 export default function SettingsAiProviders() {
-  const { providers, isLoading, isAdmin, create, update, remove, reorder, test } = useAiProviders();
+  const { providers, isLoading, isError, isAdmin, refetch, create, update, remove, reorder, test } = useAiProviders();
   const pushToast = useToastStore((s) => s.push);
   const { confirm, dialog } = useConfirm();
   const [editing, setEditing] = useState<PublicProvider | 'new' | null>(null);
@@ -145,11 +145,16 @@ export default function SettingsAiProviders() {
       <Card className="overflow-hidden">
         <CardHeader className="pb-3">
           <CardTitle>模型清单</CardTitle>
-          <CardDescription>顺序即优先级，最上方的可用模型优先命中。共 {providers.length} 个。</CardDescription>
+          <CardDescription>顺序即优先级，最上方的可用模型优先命中。共 {isLoading ? '…' : providers.length} 个。</CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
           {isLoading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>
+          ) : isError ? (
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-10 text-center">
+              <div className="text-sm text-muted-foreground">加载失败，请检查网络或登录状态后重试。</div>
+              <Button size="sm" variant="secondary" onClick={() => refetch()}>重试</Button>
+            </div>
           ) : providers.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-10 text-center">
               <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-primary"><Bot className="h-6 w-6" /></div>
@@ -203,7 +208,7 @@ export default function SettingsAiProviders() {
             {editing === 'new' ? (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">模板</label>
-                <Select defaultValue="" onChange={(e) => applyTemplate(e.target.value)}>
+                <Select defaultValue="" onChange={(e) => { applyTemplate(e.target.value); e.currentTarget.value = ''; }}>
                   <option value="">手动填写</option>
                   {PROVIDER_TEMPLATES.map((t) => <option key={t.label} value={t.label}>{t.label}</option>)}
                 </Select>

@@ -120,17 +120,18 @@ export function getAppModules(items: NavNode[] = navigation): AppModule[] {
     });
 }
 
-export function flattenNavLinks(items: NavNode[] = navigation): NavLinkNode[] {
+export function flattenNavLinks(items: NavNode[] = navigation, includeAdminOnly = true): NavLinkNode[] {
   const result: NavLinkNode[] = [];
+  const keep = (link: NavLinkNode) => includeAdminOnly || !link.adminOnly;
   for (const item of items) {
     if (item.kind === 'heading') continue;
     if ('href' in item) {
-      result.push(item);
+      if (keep(item)) result.push(item);
       continue;
     }
     for (const child of item.children) {
       if (child.kind === 'heading') continue;
-      if ('href' in child) result.push(child);
+      if ('href' in child && keep(child)) result.push(child);
     }
   }
   return result;

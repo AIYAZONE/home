@@ -48,8 +48,8 @@ export function Panel(props: {
   onToggleCollapsed: () => void;
 }) {
   const group = props.module.node.kind === 'group' ? props.module.node : null;
-  const { isAdmin } = useAiProviders();
-  const sections = group ? buildSections(group.children, isAdmin) : [];
+  const { isAdmin, isLoading } = useAiProviders();
+  const sections = group ? buildSections(group.children, isAdmin && !isLoading) : [];
 
   return (
     <aside

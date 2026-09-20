@@ -4,6 +4,7 @@ import { Bot, Sparkles, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/hooks/useTheme';
 import { useProfile } from '@/hooks/useProfile';
+import { useAiProviders } from '@/hooks/useAiProviders';
 import { navigation, mobileTabs, flattenNavLinks, getAppModules, moduleQuickActions } from '@/config/navigation';
 import { Rail } from '@/layouts/app-shell/Rail';
 import { Panel } from '@/layouts/app-shell/Panel';
@@ -49,6 +50,8 @@ export default function MainLayout() {
   const queryClient = useQueryClient();
   const { isDark, toggleTheme } = useTheme();
   const { data: profile } = useProfile();
+  const { isAdmin: aiIsAdmin, isLoading: aiIsLoading } = useAiProviders();
+  const showAdminNav = aiIsAdmin && !aiIsLoading;
   const pushToast = useToastStore((s) => s.push);
 
   const modules = useMemo(() => getAppModules(navigation), []);
@@ -119,7 +122,7 @@ export default function MainLayout() {
   }, [navigate]);
 
   const commands: CommandItem[] = useMemo(() => {
-    const linkCommands: CommandItem[] = flattenNavLinks(navigation).map((l) => {
+    const linkCommands: CommandItem[] = flattenNavLinks(navigation, showAdminNav).map((l) => {
       const module = modules.find((m) => l.href === m.href || l.href.startsWith(`${m.href}/`));
       return {
         id: `nav:${l.href}`,
@@ -197,7 +200,7 @@ export default function MainLayout() {
     ];
 
     return [...aiCommands, ...quickCommands, ...linkCommands];
-  }, [isDark, modules, navigate, toggleTheme]);
+  }, [isDark, modules, navigate, toggleTheme, showAdminNav]);
 
   const contentPaddingLeft = sidebarCollapsed ? 'lg:pl-0' : 'lg:pl-[352px]';
   const contentPaddingRight = copilotPinned ? 'lg:pr-[360px]' : '';

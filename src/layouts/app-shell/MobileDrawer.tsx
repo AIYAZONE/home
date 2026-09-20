@@ -49,8 +49,8 @@ export function MobileDrawer(props: {
 }) {
   const activeModule = props.modules.find((m) => m.id === props.activeModuleId) ?? props.modules[0];
   const group = activeModule?.node.kind === 'group' ? activeModule.node : null;
-  const { isAdmin } = useAiProviders();
-  const sections = group ? buildSections(group.children, isAdmin) : [];
+  const { isAdmin, isLoading } = useAiProviders();
+  const sections = group ? buildSections(group.children, isAdmin && !isLoading) : [];
 
   return (
     <>
