@@ -42,6 +42,14 @@ describe('getProviderChain', () => {
     await getProviderChain('text', { loadRows });
     expect(loadRows).toHaveBeenCalledTimes(1);
   });
+
+  it('空表时 env 兜底链按 capability 精确匹配：vision 请求不吞入 text env 链', async () => {
+    process.env.DEEPSEEK_API_KEY = 'ds-env-key';
+    // env 兜底链只会构造 capability:'text' 的 provider
+    expect(await getProviderChain('text', { loadRows: async () => [] })).toHaveLength(1);
+    // vision 请求在空表下应得到空链（而非把纯文本模型塞进视觉路由）
+    expect(await getProviderChain('vision', { loadRows: async () => [] })).toEqual([]);
+  });
 });
 
 describe('callRoutedChat', () => {

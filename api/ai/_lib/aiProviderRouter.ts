@@ -91,7 +91,8 @@ export async function getProviderChain(
     console.warn('[aiRouter] load failed, fallback to env', { message: err instanceof Error ? err.message : String(err) });
   }
   // 空表/查询失败 → env 兜底链（不缓存，表就绪后自动接管）
-  return buildEnvFallbackChain(process.env);
+  // env 兜底链仅构造 text 能力，故按请求 capability 精确过滤：vision 请求在纯 env 配置下返回空链
+  return buildEnvFallbackChain(process.env).filter(p => p.capability === capability);
 }
 
 export function providerCall(p: ResolvedProvider, req: RoutedRequest): Promise<{ content: string }> {
