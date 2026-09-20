@@ -36,6 +36,21 @@ describe('callLow', () => {
       .rejects.toMatchObject({ status: 0 });
   });
 
+  it('网络失败保留原始错误 cause，日志只记 message', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('socket hang up')));
+      await expect(callLow({ baseUrl: 'https://x.test/v1', apiKey: 'k', model: 'm', messages: [] }))
+        .rejects.toMatchObject({ status: 0, name: 'AiUpstreamError', cause: { message: 'socket hang up' } });
+      expect(spy).toHaveBeenCalledWith('[aiOpenAiCompat] fetch failed', { message: 'socket hang up' });
+      const logged = JSON.stringify(spy.mock.calls);
+      expect(logged).not.toContain('Bearer');
+      expect(logged).not.toContain('"k"');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('responseFormatJson 时请求体带 json_object，且 baseUrl 尾斜杠被规范化', async () => {
     const f = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '{}' } }] }) });
     vi.stubGlobal('fetch', f);

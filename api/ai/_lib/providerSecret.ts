@@ -29,8 +29,9 @@ export function encryptApiKey(plaintext: string): string {
 export function decryptApiKey(payload: string): string {
   const [ivB64, tagB64, dataB64] = String(payload ?? '').split(':');
   if (!ivB64 || !tagB64 || !dataB64) throw new ProviderSecretError();
+  const key = masterKey();
   try {
-    const decipher = createDecipheriv(ALGORITHM, masterKey(), Buffer.from(ivB64, 'base64'));
+    const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(ivB64, 'base64'));
     decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
     let dec = decipher.update(dataB64, 'base64', 'utf8');
     dec += decipher.final('utf8');

@@ -42,8 +42,11 @@ export async function callLow(args: {
       ...(args.responseFormatJson ? { response_format: { type: 'json_object' } } : {}),
       messages: args.messages,
     }),
-  }).catch(() => {
-    throw new AiUpstreamError('AI 服务暂时不可用，请稍后再试。', 0);
+  }).catch((e: unknown) => {
+    // 仅记录 message，绝不落盘 headers / body / apiKey
+    console.error('[aiOpenAiCompat] fetch failed', { message: e instanceof Error ? e.message : String(e) });
+    // tsconfig target 为 ES2020（无 ErrorOptions），用 Object.assign 挂载 cause
+    throw Object.assign(new AiUpstreamError('AI 服务暂时不可用，请稍后再试。', 0), { cause: e });
   });
 
   const json = await res.json().catch(() => null);

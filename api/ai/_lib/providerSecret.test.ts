@@ -28,6 +28,13 @@ describe('providerSecret', () => {
     expect(() => encryptApiKey('sk-x')).toThrow(ProviderSecretError);
   });
 
+  it('解密时主密钥缺失应透传配置诊断文案', () => {
+    const enc = encryptApiKey('sk-abcdef123456789');
+    delete process.env.AI_PROVIDER_ENC_KEY;
+    expect(() => decryptApiKey(enc)).toThrow(ProviderSecretError);
+    expect(() => decryptApiKey(enc)).toThrow(/AI_PROVIDER_ENC_KEY/);
+  });
+
   it('掩码不泄漏中间位', () => {
     expect(maskApiKey('sk-abcdef123456789a9f')).toBe('sk-***a9f');
     expect(maskApiKey('short')).toBe('sk-***rt');
