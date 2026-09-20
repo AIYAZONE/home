@@ -56,12 +56,13 @@ describe('getProviderChain', () => {
     expect(chain.map((c) => c.id)).toEqual(['p1', 's1', 's2']);
   });
 
-  it('用户默认模型置顶；默认行被删/能力不符时静默忽略（v2 user_model_prefs）', async () => {
+  it('用户默认模型置顶；默认行被删/被 disable（loadRows 按 enabled 过滤后不可见，同等于缺失）/能力不符时静默忽略（v2 user_model_prefs）', async () => {
     const { encryptApiKey } = await import('./providerSecret.js');
     const enc = encryptApiKey('sk');
-    const rows = [row({ id: 's1', api_key_encrypted: enc }), row({ id: 'p1', owner_user_id: 'u1', api_key_encrypted: enc })];
-    const chain = await getProviderChain('text', 'u1', { loadRows: async () => rows, loadDefaultId: async () => 's1' });
-    expect(chain.map((c) => c.id)).toEqual(['s1', 'p1']);
+    const rows = [row({ id: 's1', api_key_encrypted: enc }), row({ id: 's2', api_key_encrypted: enc }), row({ id: 'p1', owner_user_id: 'u1', api_key_encrypted: enc })];
+    // s2 本在个人行 p1 之后（跨域置顶），验证重排而非仅 2 元素对换
+    const chain = await getProviderChain('text', 'u1', { loadRows: async () => rows, loadDefaultId: async () => 's2' });
+    expect(chain.map((c) => c.id)).toEqual(['s2', 'p1', 's1']);
     const chainMissing = await getProviderChain('vision', 'u1', {
       loadRows: async () => [row({ id: 'v1', capability: 'vision', api_key_encrypted: enc })],
       loadDefaultId: async () => 'deleted-row',
@@ -69,9 +70,13 @@ describe('getProviderChain', () => {
     expect(chainMissing.map((c) => c.id)).toEqual(['v1']);
   });
 
-  it('无 userId（未登录路径）只解析共享行且不做默认置顶', async () => {
-    const loadDefaultId = vi.fn().mockResolvedValue('x');
-    await getProviderChain('text', null, { loadRows: async () => [], loadDefaultId });
+  it('null userId：即便 loadDefaultId 返回 id 也不置顶，且透传 null 给两个 loader', async () => {
+    const { encryptApiKey } = await import('./providerSecret.js');
+    const enc = encryptApiKey('sk');
+    const rows = [row({ id: 's1', api_key_encrypted: enc }), row({ id: 's2', api_key_encrypted: enc })];
+    const loadDefaultId = vi.fn().mockResolvedValue('s2');
+    const chain = await getProviderChain('text', null, { loadRows: async () => rows, loadDefaultId });
+    expect(chain.map((c) => c.id)).toEqual(['s1', 's2']);
     expect(loadDefaultId).toHaveBeenCalledWith(null, 'text');
   });
 
@@ -88,7 +93,7 @@ describe('callRoutedChat', () => {
   it('表为空时回落 env 单元素链', async () => {
     process.env.DEEPSEEK_API_KEY = 'ds-env-key';
     const call = vi.fn().mockResolvedValue({ content: 'ok' });
-    const r = await callRoutedChat('text', { system: 's', user: 'u' }, null, { loadRows: async () => [], call });
+    const r = await callRoutedChat('text', { system: 's', user: 'u' }, { userId: null }, { loadRows: async () => [], call });
     expect(r.provider.id).toBe('env:deepseek');
     expect(call).toHaveBeenCalledTimes(1);
   });
@@ -109,7 +114,7 @@ describe('callRoutedChat', () => {
     ];
     const call = vi.fn().mockRejectedValueOnce(Object.assign(new Error('rate'), { name: 'AiUpstreamError', status: 429 })).mockResolvedValueOnce({ content: 'fallback' });
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const r = await callRoutedChat('text', { system: 's', user: 'u' }, null, { loadRows: async () => rows, call, now: () => 0 });
+    const r = await callRoutedChat('text', { system: 's', user: 'u' }, { userId: null }, { loadRows: async () => rows, call, now: () => 0 });
     expect(r.content).toBe('fallback');
     expect(r.provider.costTier).toBe('paid');
     const logged = logSpy.mock.calls.filter((c) => c[0] === '[aiRouter] call');

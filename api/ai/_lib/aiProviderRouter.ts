@@ -99,7 +99,7 @@ function toChain(rows: ProviderRow[], capability: Capability): ResolvedProvider[
 
 export async function getProviderChain(
   capability: Capability,
-  userId?: string | null,
+  userId: string | null,
   deps?: { loadRows?: (userId: string | null) => Promise<ProviderRow[]>; loadDefaultId?: (userId: string | null, capability: Capability) => Promise<string | null> },
 ): Promise<ResolvedProvider[]> {
   const key = `${capability}:${userId ?? ''}`;
@@ -107,18 +107,18 @@ export async function getProviderChain(
   const now = Date.now();
   if (hit && hit.until > now) return hit.chain;
   try {
-    const rows = await (deps?.loadRows ?? defaultLoadRows)(userId ?? null);
+    const rows = await (deps?.loadRows ?? defaultLoadRows)(userId);
     // 个人优先降级（spec §5.1）：默认→个人→共享，各域内保持 priority 升序（sort 稳定）
     const ordered = [...rows].sort((a, b) => (a.owner_user_id !== null ? 0 : 1) - (b.owner_user_id !== null ? 0 : 1));
     let chain = toChain(ordered, capability);
     // 默认选择只影响链首顺序，查不到/失败不炸整链（退化为不置顶的常规优先序）
     let defaultId: string | null = null;
     try {
-      defaultId = await (deps?.loadDefaultId ?? defaultLoadDefaultId)(userId ?? null, capability);
+      defaultId = await (deps?.loadDefaultId ?? defaultLoadDefaultId)(userId, capability);
     } catch (err: unknown) {
       console.warn('[aiRouter] default pref load skipped', { message: err instanceof Error ? err.message : String(err) });
     }
-    if (defaultId) {
+    if (userId && defaultId) { // 未登录路径无「用户默认」可言：即便 loader 异常返回 id 也不置顶
       const i = chain.findIndex((p) => p.id === defaultId);
       if (i > 0) chain = [chain[i], ...chain.slice(0, i), ...chain.slice(i + 1)];
     }
@@ -153,7 +153,8 @@ export function providerCall(p: ResolvedProvider, req: RoutedRequest): Promise<{
 export async function callRoutedChat(
   capability: Capability,
   request: RoutedRequest,
-  ctx?: { userId?: string | null },
+  // ctx 必填：强制每个调用点声明可见域（未登录/内部路径显式传 { userId: null }），杜绝静默漏传降级为仅共享链
+  ctx: { userId: string | null },
   deps?: {
     loadRows?: (userId: string | null) => Promise<ProviderRow[]>;
     loadDefaultId?: (userId: string | null, capability: Capability) => Promise<string | null>;
@@ -161,7 +162,7 @@ export async function callRoutedChat(
     now?: () => number;
   },
 ): Promise<{ content: string; provider: ResolvedProvider }> {
-  const chain = await getProviderChain(capability, ctx?.userId ?? null, deps);
+  const chain = await getProviderChain(capability, ctx.userId, deps);
   return runChain({
     chain,
     request,

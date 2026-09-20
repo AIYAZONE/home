@@ -127,6 +127,7 @@ getProviderChain(capability, userId): Promise<ResolvedProvider[]>  // v2：按�
 - service role 查询 `ai_providers`：`(owner_user_id IS NULL OR owner_user_id = userId)` 且 `enabled = true` 且 capability 精确匹配（vision 只命中 vision，text 不命中 vision），按优先级排序，逐条解密 key。
 - **链首 = 该用户在 `user_model_prefs` 选定的默认**（若仍 enabled 且能力匹配）；其余：该用户私有行→共享行，各按 `priority asc`。均不命中时回落 env。
 - **缓存**：共享行可按 capability 缓存 60s；个人行按 `userId+capability` 缓存（量小）。写操作后清本实例缓存。
+- **已接受的权衡（批 2 评审 Minor-2）**：serverless 下 `clearInstanceCache` 仅清本实例，v2 后「个人链/用户默认」也会跨实例陈旧（最长 60s 自愈）；与冷却表冷启动丢失同量级，不为此引入持久化失效机制。
 
 ### 5.2 调用与降级状态机
 
