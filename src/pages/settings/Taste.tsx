@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react';
 import { Loader2, User } from 'lucide-react';
 import { useFamilyMembers } from '@/hooks/useFamilyMembers';
 import { useMealPreferences } from '@/hooks/useMealPreferences';
+import { useMemberRemarks } from '@/hooks/useMemberRemarks';
+import { useProfile } from '@/hooks/useProfile';
+import { formatMemberSelectLabel } from '@/lib/member';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Alert } from '@/components/ui/alert';
 import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/page';
-import type { UserProfile } from '@/types';
+import type { FamilyMemberRemark, UserProfile } from '@/types';
 
 const SPICY_OPTIONS: { value: 'none' | 'mil' | 'med' | 'hot'; label: string }[] = [
   { value: 'none', label: '不吃辣' },
@@ -17,7 +20,15 @@ const SPICY_OPTIONS: { value: 'none' | 'mil' | 'med' | 'hot'; label: string }[] 
   { value: 'hot', label: '重辣' },
 ];
 
-function TasteRow({ member }: { member: UserProfile }) {
+function TasteRow({
+  member,
+  remarkByMemberId,
+  isSelf,
+}: {
+  member: UserProfile;
+  remarkByMemberId: Record<string, FamilyMemberRemark>;
+  isSelf: boolean;
+}) {
   const { pref, isLoading, savePref, isSaving } = useMealPreferences(member.id);
   const [disliked, setDisliked] = useState('');
   const [liked, setLiked] = useState('');
@@ -30,7 +41,7 @@ function TasteRow({ member }: { member: UserProfile }) {
     setSpicy(pref.spicy_level ?? 'hot');
   }, [pref]);
 
-  const displayName = member.name || member.email?.split('@')[0] || '成员';
+  const displayName = formatMemberSelectLabel(member, remarkByMemberId);
 
   if (isLoading) {
     return (
@@ -47,7 +58,13 @@ function TasteRow({ member }: { member: UserProfile }) {
         <div className="grid h-9 w-9 place-items-center rounded-xl bg-muted/60">
           <User className="h-4 w-4" />
         </div>
-        <span className="text-sm font-medium text-foreground">{displayName}</span>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-foreground">
+            {displayName}
+            {isSelf && <span className="ml-1 text-xs text-muted-foreground">(我)</span>}
+          </div>
+          {member.email && <div className="truncate text-xs text-muted-foreground">{member.email}</div>}
+        </div>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="space-y-1 text-sm">
@@ -85,6 +102,8 @@ function TasteRow({ member }: { member: UserProfile }) {
 
 export default function SettingsTaste() {
   const { members, isLoading } = useFamilyMembers();
+  const { remarkByMemberId } = useMemberRemarks();
+  const { data: profile } = useProfile();
 
   if (isLoading) {
     return (
@@ -116,7 +135,12 @@ export default function SettingsTaste() {
           ) : (
             <div className="divide-y divide-border rounded-xl border border-border">
               {members?.map((member) => (
-                <TasteRow key={member.id} member={member} />
+                <TasteRow
+                  key={member.id}
+                  member={member}
+                  remarkByMemberId={remarkByMemberId}
+                  isSelf={member.id === profile?.id}
+                />
               ))}
             </div>
           )}

@@ -1,10 +1,15 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useProfile } from '@/hooks/useProfile';
+import { useMemberRemarks } from '@/hooks/useMemberRemarks';
+import { formatMemberSelectLabel } from '@/lib/member';
+import type { UserProfile } from '@/types';
 
 export interface MemberMealSummary {
   userId: string;
-  name: string;
+  /** 与成员管理页一致：备注名（如「老婆」）+ 账号 */
+  displayName: string;
   /** 健康档案里的过敏原（原文，可能为逗号分隔） */
   allergies: string | null;
   /** 口味偏好：忌口 / 爱吃 / 辣度 */
@@ -26,16 +31,19 @@ export function spicyLabel(level: string | null): string | null {
   return level ? SPICY_LABELS[level] ?? null : null;
 }
 
+type RawMemberSummary = MemberMealSummary & { _member: UserProfile };
+
 /**
  * 汇总全家每位成员的健康约束（过敏原）与口味偏好，
  * 供「今天吃什么」页面展示"这次推荐结合了谁"。仅家长/管理员角色在 RLS 下能读到全家数据。
  */
 export function useFamilyMealConstraints() {
   const { data: profile } = useProfile();
+  const { remarkByMemberId } = useMemberRemarks();
 
   const query = useQuery({
     queryKey: ['family-meal-constraints', profile?.family_id],
-    queryFn: async (): Promise<MemberMealSummary[]> => {
+    queryFn: async (): Promise<RawMemberSummary[]> => {
       if (!profile?.family_id) return [];
       const [membersRes, healthRes, prefRes] = await Promise.all([
         supabase
@@ -63,19 +71,30 @@ export function useFamilyMealConstraints() {
           const pref = prefByUser.get(m.id);
           return {
             userId: m.id,
-            name: m.name || m.email?.split('@')[0] || '成员',
+            displayName: '',
+            _member: { id: m.id, name: m.name, email: m.email } as UserProfile,
             allergies: health?.allergies?.trim() || null,
             disliked: pref?.disliked?.trim() || null,
             liked: pref?.liked?.trim() || null,
             spicyLevel: pref?.spicy_level ?? null,
             hasHealthProfile: Boolean(health),
             hasMealPreference: Boolean(pref),
-          } satisfies MemberMealSummary;
+          };
         },
       );
     },
     enabled: !!profile?.family_id,
   });
 
-  return { members: query.data, isLoading: query.isLoading, error: query.error };
+  // 备注名是另一路查询，在这里合并出与成员管理页一致的 displayName
+  const members = useMemo(
+    () =>
+      (query.data ?? []).map((m) => ({
+        ...m,
+        displayName: formatMemberSelectLabel(m._member, remarkByMemberId),
+      })),
+    [query.data, remarkByMemberId],
+  );
+
+  return { members, isLoading: query.isLoading, error: query.error };
 }

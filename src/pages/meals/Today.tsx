@@ -35,7 +35,7 @@ function MemberConstraintRow({ member }: { member: MemberMealSummary }) {
   const hasAnything = member.allergies || member.disliked || member.liked || member.spicyLevel;
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5 text-sm">
-      <span className="font-medium text-foreground">{member.name}</span>
+      <span className="font-medium text-foreground">{member.displayName}</span>
       {member.allergies && (
         <Badge variant="danger">过敏：{member.allergies}</Badge>
       )}
