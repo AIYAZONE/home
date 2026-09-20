@@ -139,6 +139,11 @@ function buildPrompt(text: string): string {
   ].join('\n');
 }
 
+// AI 端点需为「provider 降级链」留足时间预算。健康报告文本长（可达 200k 字符），单 provider 15s 可能不够，
+// 故本端点 maxDuration 取 80s（对齐切换前 withServerTimeout 的总预算，修复批 D M-4 「长报告超时预算丢失」），
+// 留容降级链（80s ÷ 15s ≈ 5 次）；Hobby 上限 10s 会钳制并告警，生产需 Pro/fluid compute。
+export const config = { maxDuration: 80 };
+
 export default async function handler(req: RequestLike, res: ResponseLike) {
   const t = traceId();
   res.setHeader('Cache-Control', 'no-store');

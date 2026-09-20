@@ -14,9 +14,10 @@ const p = (id: string, over: Partial<ResolvedProvider> = {}): ResolvedProvider =
 const up = (status: number) => Object.assign(new Error('upstream'), { name: 'AiUpstreamError', status });
 
 describe('shouldCooldown', () => {
-  it('429/5xx/0 冷却；400/401/403 不冷却', () => {
-    expect([429, 502, 503, 504, 0].every(shouldCooldown)).toBe(true);
-    expect([400, 401, 403].some(shouldCooldown)).toBe(false);
+  it('429/5xx/0 冷却；4xx非429/401/403 不冷却', () => {
+    // 回归：5xx 按区间判定（含 500/501 等上游内部错），而非只枚举 502/503/504
+    expect([429, 500, 501, 502, 503, 504, 599, 0].every(shouldCooldown)).toBe(true);
+    expect([400, 401, 403, 404, 429 - 1].some(shouldCooldown)).toBe(false);
   });
 });
 

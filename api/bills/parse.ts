@@ -99,6 +99,11 @@ function trimJsonEnvelope(text: string): string {
   return s;
 }
 
+// AI 端点需为「provider 降级链」留足时间预算：单 provider 超时 15s（见 aiProviderRouter），
+// maxDuration 须显著大于该值，才能在平台杀死函数前完成「降级下一家 / 抛友好错误」，而非静默截断链。
+// 60s ≈ 容 3–4 次降级尝试；Hobby 计划上限 10s 会被钳制并告警，生产需 Pro/fluid compute。
+export const config = { maxDuration: 60 };
+
 export default async function handler(req: RequestLike, res: ResponseLike) {
   const t = traceId();
   res.setHeader('Cache-Control', 'no-store');

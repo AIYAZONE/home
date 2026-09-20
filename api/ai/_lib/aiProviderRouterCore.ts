@@ -28,10 +28,11 @@ export class AllProvidersUnavailableError extends Error {
   }
 }
 
-const ERROR_STATUSES = new Set([0, 429, 502, 503, 504]);
-
+// 冷却语义对齐 spec §0「429 / 5xx / 超时」：
+// 0 = callLow 对网络错/超时的归一化状态码；429 = 限流；5xx（500–599）= 上游过载/内部错误（含 500，国内模型过载常见）。
+// 401/403（密钥失效）不冷却：本轮 for 循环仍会降级下一项，但不写冷却表（密钥不会自愈，冷却无意义且会掩盖配置错误）。
 export function shouldCooldown(status: number): boolean {
-  return ERROR_STATUSES.has(status);
+  return status === 0 || status === 429 || (status >= 500 && status <= 599);
 }
 
 export function isCoolingDown(map: Map<string, number>, id: string, now: number): boolean {
