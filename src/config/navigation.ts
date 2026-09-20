@@ -6,7 +6,6 @@ export type NavLinkNode = {
   name: string;
   href: string;
   icon: ComponentType<{ className?: string }>;
-  adminOnly?: boolean;
 };
 
 export type NavGroupNode = {
@@ -76,7 +75,7 @@ export const navigation: NavNode[] = [
       { name: '邀请管理', href: '/settings/invitations', icon: UserPlus },
       { name: '数据管理', href: '/settings/data', icon: Download },
       { name: '信任中心', href: '/settings/trust', icon: Shield },
-      { name: 'AI 模型管理', href: '/settings/ai-providers', icon: Bot, adminOnly: true },
+      { name: '我的 AI 模型', href: '/settings/ai-providers', icon: Bot },
     ],
   },
 ];
@@ -120,18 +119,17 @@ export function getAppModules(items: NavNode[] = navigation): AppModule[] {
     });
 }
 
-export function flattenNavLinks(items: NavNode[] = navigation, includeAdminOnly = true): NavLinkNode[] {
+export function flattenNavLinks(items: NavNode[] = navigation): NavLinkNode[] {
   const result: NavLinkNode[] = [];
-  const keep = (link: NavLinkNode) => includeAdminOnly || !link.adminOnly;
   for (const item of items) {
     if (item.kind === 'heading') continue;
     if ('href' in item) {
-      if (keep(item)) result.push(item);
+      result.push(item);
       continue;
     }
     for (const child of item.children) {
       if (child.kind === 'heading') continue;
-      if ('href' in child && keep(child)) result.push(child);
+      if ('href' in child) result.push(child);
     }
   }
   return result;

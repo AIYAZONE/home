@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils';
 import type { AppModule, ModuleQuickAction, NavLinkNode, NavNode } from '@/config/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { useAiProviders } from '@/hooks/useAiProviders';
 
 type Section = { heading?: string; links: NavLinkNode[] };
 
@@ -16,7 +15,7 @@ function isLink(node: NavNode): node is NavLinkNode {
   return 'href' in node;
 }
 
-function buildSections(children: NavNode[], isAdmin: boolean): Section[] {
+function buildSections(children: NavNode[]): Section[] {
   const sections: Section[] = [];
   let current: Section | null = null;
   for (const child of children) {
@@ -26,7 +25,6 @@ function buildSections(children: NavNode[], isAdmin: boolean): Section[] {
       continue;
     }
     if (!isLink(child)) continue;
-    if (child.adminOnly && !isAdmin) continue;
     if (!current) {
       current = { links: [] };
       sections.push(current);
@@ -48,8 +46,7 @@ export function Panel(props: {
   onToggleCollapsed: () => void;
 }) {
   const group = props.module.node.kind === 'group' ? props.module.node : null;
-  const { isAdmin, isLoading } = useAiProviders();
-  const sections = group ? buildSections(group.children, isAdmin && !isLoading) : [];
+  const sections = group ? buildSections(group.children) : [];
 
   return (
     <aside

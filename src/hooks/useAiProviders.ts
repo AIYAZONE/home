@@ -1,38 +1,49 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ApiError, providersApi, type ProviderDraft, type PublicProvider } from '@/lib/aiProviders';
+import { useAuth } from '@/contexts/AuthContext';
+import { ApiError, providersApi, type ProviderDefaults, type ProviderDraft } from '@/lib/aiProviders';
 
 export function useAiProviders() {
+  const { user } = useAuth();
+  const userId = user?.id;
   const qc = useQueryClient();
   const query = useQuery({
-    queryKey: ['ai-providers'],
-    queryFn: () => providersApi.list().then((r) => r.providers),
-    retry: (count, err) => !(err instanceof ApiError && (err.status === 401 || err.status === 403)) && count < 2,
-    // 平台管理员门控常驻于 app-shell：降噪，避免每次窗口聚焦/重连都打一次 list（非管理员必 403）
-    staleTime: 60_000,
+    // queryKey 带 userId：登录切换后不串读上一位用户的清单/默认
+    queryKey: ['ai-providers', userId],
+    queryFn: () => providersApi.list(),
+    enabled: Boolean(userId),
+    retry: (count, err) => !(err instanceof ApiError && err.status === 401) && count < 2,
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
-  const isAdmin = !query.isError || !(query.error instanceof ApiError && query.error.status === 403);
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['ai-providers'] });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['ai-providers', userId] });
   const create = useMutation({ mutationFn: (draft: ProviderDraft) => providersApi.create(draft), onSuccess: invalidate });
   const update = useMutation({ mutationFn: ({ id, patch }: { id: string; patch: Partial<ProviderDraft> }) => providersApi.update(id, patch), onSuccess: invalidate });
   const remove = useMutation({ mutationFn: (id: string) => providersApi.remove(id), onSuccess: invalidate });
   const reorder = useMutation({ mutationFn: (ids: string[]) => providersApi.reorder(ids), onSuccess: invalidate });
   const test = useMutation({ mutationFn: (id: string) => providersApi.test(id), onSuccess: invalidate });
+  const setDefault = useMutation({
+    mutationFn: ({ capability, providerId }: { capability: 'text' | 'vision'; providerId: string }) =>
+      providersApi.setDefault(capability, providerId),
+    onSuccess: invalidate,
+  });
 
+  const data = query.data;
   return {
-    providers: query.data ?? [],
+    providers: data?.providers ?? [],
+    defaults: (data?.defaults ?? { text: null, vision: null }) as ProviderDefaults,
+    canManageShared: data?.canManageShared ?? false,
     isLoading: query.isLoading,
     isError: query.isError,
-    isAdmin,
     refetch: query.refetch,
     create,
     update,
     remove,
     reorder,
     test,
-    isMutating: create.isPending || update.isPending || remove.isPending || reorder.isPending || test.isPending,
+    setDefault,
+    isMutating: create.isPending || update.isPending || remove.isPending || reorder.isPending || test.isPending || setDefault.isPending,
   };
 }
 
-export type { PublicProvider, ProviderDraft };
+export type { PublicProvider, ProviderDraft } from '@/lib/aiProviders';
