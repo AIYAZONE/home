@@ -15,8 +15,15 @@ export default async function handler(req: any, res: any) {
       update.api_key_mask = maskApiKey(patch.api_key);
     }
     delete update.api_key;
+    // 关键链路字段变更时清空测试徽标，避免陈旧“✓”误导（评审 M-1）
+    if (patch.api_key || patch.base_url || patch.model) {
+      update.test_status = null;
+      update.test_detail = null;
+      update.tested_at = null;
+    }
     const client = await adminClient();
     const { data, error } = await client.from('ai_providers').update(update).eq('id', id).select('*').maybeSingle();
+    if (error) console.error('[api/ai.providers.update]', { traceId: t, db: error.message });
     if (error || !data) return res.status(400).json({ message: '更新失败，模型可能已被删除。', traceId: t });
     clearInstanceCache();
     res.status(200).json({ provider: toPublicRow(data) });

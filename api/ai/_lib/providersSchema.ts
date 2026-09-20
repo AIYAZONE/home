@@ -38,3 +38,6 @@ export function toPublicRow(row: AdminRow) {
     test_status: row.test_status, test_detail: row.test_detail, tested_at: row.tested_at,
   };
 }
+
+/** 对外可消费的管理端行类型（Task 12 前端数据层依赖） */
+export type PublicProvider = ReturnType<typeof toPublicRow>;

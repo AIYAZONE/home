@@ -21,7 +21,10 @@ export default async function handler(req: any, res: any) {
       priority, enabled: parsed.data.enabled,
     };
     const { data, error } = await client.from('ai_providers').insert(payload).select('*').single();
-    if (error) return res.status(400).json({ message: '保存失败，请重试。', traceId: t });
+    if (error) {
+      console.error('[api/ai.providers.create]', { traceId: t, db: error.message });
+      return res.status(400).json({ message: '保存失败，请重试。', traceId: t });
+    }
     clearInstanceCache();
     res.status(200).json({ provider: toPublicRow(data) });
   });

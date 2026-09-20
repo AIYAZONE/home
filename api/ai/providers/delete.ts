@@ -8,7 +8,10 @@ export default async function handler(req: any, res: any) {
     if (!parsed.success) return res.status(400).json({ message: '参数不合法。', traceId: t });
     const client = await adminClient();
     const { error } = await client.from('ai_providers').delete().eq('id', parsed.data.id);
-    if (error) return res.status(400).json({ message: '删除失败，请重试。', traceId: t });
+    if (error) {
+      console.error('[api/ai.providers.delete]', { traceId: t, db: error.message });
+      return res.status(400).json({ message: '删除失败，请重试。', traceId: t });
+    }
     clearInstanceCache();
     res.status(200).json({ ok: true });
   });
