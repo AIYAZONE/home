@@ -9,6 +9,12 @@ export const ProviderCreateSchema = z.object({
   cost_tier: z.enum(['free', 'paid']),
   enabled: z.boolean().optional().default(true),
   priority: z.number().int().optional(),
+  scope: z.enum(['personal', 'shared']).optional().default('personal'), // v2：shared 需邮箱白名单
+});
+
+export const SetDefaultSchema = z.object({
+  capability: z.enum(['text', 'vision']),
+  provider_id: z.string().uuid(),
 });
 
 export const ProviderPatchSchema = z.object({
@@ -26,6 +32,7 @@ export type AdminRow = {
   id: string; name: string; base_url: string; model: string;
   api_key_mask: string; capability: 'text' | 'vision'; cost_tier: 'free' | 'paid';
   priority: number; enabled: boolean;
+  owner_user_id: string | null; // v2：NULL=平台共享，非空=用户私有
   test_status: string | null; test_detail: string | null; tested_at: string | null;
   created_at?: string; updated_at?: string;
 };
@@ -35,6 +42,7 @@ export function toPublicRow(row: AdminRow) {
     id: row.id, name: row.name, base_url: row.base_url, model: row.model,
     api_key_mask: row.api_key_mask, capability: row.capability, cost_tier: row.cost_tier,
     priority: row.priority, enabled: row.enabled,
+    owner_user_id: row.owner_user_id,
     test_status: row.test_status, test_detail: row.test_detail, tested_at: row.tested_at,
   };
 }

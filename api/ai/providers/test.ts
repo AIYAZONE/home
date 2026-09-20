@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AiUpstreamError, callLow } from '../../_lib/aiOpenAiCompat.js';
+import { canManageRow, canViewRow } from '../_lib/adminGuard.js';
 import { decryptApiKey, ProviderSecretError } from '../_lib/providerSecret.js';
 import { adminClient, skeleton } from '../_lib/endpointKit.js';
 
@@ -20,7 +21,7 @@ function callWithBudget(args: Parameters<typeof callLow>[0]): Promise<{ content:
 export const config = { maxDuration: 30 };
 
 export default async function handler(req: any, res: any) {
-  await skeleton('ai.providers.test', req, res, { method: 'POST', write: true }, async (_userId, t) => {
+  await skeleton('ai.providers.test', req, res, { method: 'POST', write: true }, async (ctx, t) => {
     const parsed = z.object({ id: z.string().uuid() }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: '参数不合法。', traceId: t });
     const client = await adminClient();
@@ -30,6 +31,8 @@ export default async function handler(req: any, res: any) {
       throw new Error('读取模型条目失败。');
     }
     if (!data) return res.status(400).json({ message: '模型不存在。', traceId: t });
+    // v2：对可见行（共享或自己私有）才可测试；他人私有行按不存在处理
+    if (!canViewRow(ctx, data)) return res.status(400).json({ message: '模型不存在。', traceId: t });
 
     const started = Date.now();
     let status: 'ok' | 'error' = 'ok';
@@ -50,8 +53,11 @@ export default async function handler(req: any, res: any) {
       }
     }
     const latencyMs = Date.now() - started;
-    const { error: writeErr } = await client.from('ai_providers').update({ test_status: status, test_detail: detail ? `${detail}（${latencyMs}ms）` : `${latencyMs}ms`, tested_at: new Date().toISOString() }).eq('id', parsed.data.id);
-    if (writeErr) console.error('[api/ai.providers.test]', { traceId: t, db: writeErr.message });
+    // 写 test_* 同受归属限制：普通用户不能写共享行的测试态（仅影响他人展示的元数据）
+    if (canManageRow(ctx, data)) {
+      const { error: writeErr } = await client.from('ai_providers').update({ test_status: status, test_detail: detail ? `${detail}（${latencyMs}ms）` : `${latencyMs}ms`, tested_at: new Date().toISOString() }).eq('id', parsed.data.id);
+      if (writeErr) console.error('[api/ai.providers.test]', { traceId: t, db: writeErr.message });
+    }
     res.status(200).json({ status, latencyMs, detail: detail ?? undefined });
   });
 }

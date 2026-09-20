@@ -1,5 +1,5 @@
 import { toSafeMessage } from '../../_lib/aiOpenAiCompat.js';
-import { requirePlatformAdmin } from './adminGuard.js';
+import { requireUser, type AuthContext } from './adminGuard.js';
 
 type Headers = Record<string, string | string[] | undefined>;
 type RequestLike = { method?: string; headers?: Headers; body?: unknown };
@@ -42,7 +42,7 @@ export async function skeleton(
   req: RequestLike,
   res: ResponseLike,
   opts: { method: 'GET' | 'POST' | 'PATCH' | 'DELETE'; write?: boolean },
-  handler: (userId: string, t: string) => Promise<void>,
+  handler: (ctx: AuthContext, t: string) => Promise<void>,
 ): Promise<void> {
   const t = makeTraceId();
   res.setHeader('Cache-Control', 'no-store');
@@ -53,9 +53,9 @@ export async function skeleton(
     if (opts.write && !limit(`${tracePrefix}:${clientIp(req.headers)}`, 30, 60_000)) {
       return res.status(429).json({ message: '操作过于频繁，请稍后再试。', traceId: t });
     }
-    const guard = await requirePlatformAdmin({ headers: req.headers ?? {} });
+    const guard = await requireUser({ headers: req.headers ?? {} });
     if (guard.error) return res.status(guard.error.status).json({ message: guard.error.message, traceId: t });
-    await handler(guard.userId, t);
+    await handler(guard.ctx, t);
   } catch (err: unknown) {
     console.error(`[api/${tracePrefix}]`, { traceId: t, message: err instanceof Error ? err.message : String(err) });
     return res.status(400).json({ message: toSafeMessage(err), traceId: t });
