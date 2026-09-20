@@ -5,13 +5,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 type LocalApiHandler = (req: any, res: any) => Promise<void>;
 
-function localApiPlugin(name: string, path: string, loadHandler: () => Promise<LocalApiHandler>, fallbackMessage: string): Plugin {
+function localApiPlugin(name: string, path: string, loadHandler: () => Promise<LocalApiHandler>, fallbackMessage: string, methods: string[] = ['POST']): Plugin {
   return {
     name,
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use(path, async (req, res) => {
-        if ((req.method ?? 'GET').toUpperCase() !== 'POST') {
+        if (!methods.includes((req.method ?? 'GET').toUpperCase())) {
           res.statusCode = 405;
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
           res.end(JSON.stringify({ message: '不支持的请求方法。' }));
@@ -80,6 +80,19 @@ const localMealsApiPlugin = () =>
 const localMembersApiPlugin = () =>
   localApiPlugin('local-members-api', '/api/members/create', async () => (await import('./api/members/create')).default, '请求失败，请稍后再试。');
 
+// 模型管理端点：按 REST 语义分别声明方法白名单（list=GET、update=PATCH、其余 POST）。
+// 注意：vite.config 会被 esbuild 预打包，动态 import 的模板字面量路径无法被解析（会抛 Module not found in bundle），
+// 故沿用既有“静态字面量 import”写法。
+const providersFallback = '模型管理操作失败，请稍后再试。';
+const localAiProvidersPlugins = [
+  localApiPlugin('local-ai-providers-list', '/api/ai/providers/list', async () => (await import('./api/ai/providers/list')).default, providersFallback, ['GET']),
+  localApiPlugin('local-ai-providers-create', '/api/ai/providers/create', async () => (await import('./api/ai/providers/create')).default, providersFallback, ['POST']),
+  localApiPlugin('local-ai-providers-update', '/api/ai/providers/update', async () => (await import('./api/ai/providers/update')).default, providersFallback, ['PATCH']),
+  localApiPlugin('local-ai-providers-delete', '/api/ai/providers/delete', async () => (await import('./api/ai/providers/delete')).default, providersFallback, ['POST']),
+  localApiPlugin('local-ai-providers-reorder', '/api/ai/providers/reorder', async () => (await import('./api/ai/providers/reorder')).default, providersFallback, ['POST']),
+  localApiPlugin('local-ai-providers-test', '/api/ai/providers/test', async () => (await import('./api/ai/providers/test')).default, providersFallback, ['POST']),
+];
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -104,6 +117,7 @@ export default defineConfig(({ mode }) => {
       localAccountApiPlugin(),
       localMealsApiPlugin(),
       localMembersApiPlugin(),
+      ...localAiProvidersPlugins,
       VitePWA({
         registerType: 'prompt',
         includeAssets: ['favicon.svg', 'brand-mark.svg'],
