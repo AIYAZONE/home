@@ -146,9 +146,10 @@ export default function SettingsAiProviders() {
     );
   };
 
+  // 徽标比对加 capability 一致性防御：共享行被池管理员改能力后，prefs 指向该行也不挂错槽位徽标（评审批3 M-1）
   const defaultBadgeFlags = (row: PublicProvider) => ({
-    isTextDefault: defaults.text === row.id,
-    isVisionDefault: defaults.vision === row.id,
+    isTextDefault: row.capability === 'text' && defaults.text === row.id,
+    isVisionDefault: row.capability === 'vision' && defaults.vision === row.id,
   });
 
   const renderRow = (row: PublicProvider, index: number, list: PublicProvider[], manageable: boolean) => {
