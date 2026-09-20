@@ -77,6 +77,9 @@ const localAccountApiPlugin = () =>
 const localMealsApiPlugin = () =>
   localApiPlugin('local-meals-api', '/api/meals/recommend', async () => (await import('./api/meals/recommend')).default, '请求失败，请稍后再试。');
 
+const localMembersApiPlugin = () =>
+  localApiPlugin('local-members-api', '/api/members/create', async () => (await import('./api/members/create')).default, '请求失败，请稍后再试。');
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -100,6 +103,7 @@ export default defineConfig(({ mode }) => {
       localHealthApiPlugin(),
       localAccountApiPlugin(),
       localMealsApiPlugin(),
+      localMembersApiPlugin(),
       VitePWA({
         registerType: 'prompt',
         includeAssets: ['favicon.svg', 'brand-mark.svg'],

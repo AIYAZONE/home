@@ -29,3 +29,22 @@ export async function authAdminDeleteUser(client: any, userId: string): Promise<
   }
   throw new Error('认证管理能力不可用');
 }
+
+type SupabaseAuthCreateUserResult = {
+  data: { user: any | null };
+  error: any;
+};
+
+export async function authAdminCreateUser(
+  client: any,
+  attributes: { email: string; password: string; email_confirm: boolean; user_metadata: Record<string, unknown> },
+): Promise<SupabaseAuthCreateUserResult> {
+  const auth = client?.auth as any;
+  if (auth?.admin && typeof auth.admin.createUser === 'function') {
+    return await auth.admin.createUser(attributes);
+  }
+  if (auth?.api && typeof auth.api.adminCreateUser === 'function') {
+    return await auth.api.adminCreateUser({ data: attributes });
+  }
+  throw new Error('认证管理能力不可用');
+}

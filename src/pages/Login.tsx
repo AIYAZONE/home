@@ -4,7 +4,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
-import { Lock, Mail, Loader2, AlertCircle } from 'lucide-react';
+import { Lock, Mail, Loader2, AlertCircle, User } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { memberAccountToEmail, normalizeMemberAccount, validateMemberAccount } from '@/lib/member';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,22 +14,32 @@ import { Alert } from '@/components/ui/alert';
 import { toUserMessage } from '@/lib/error';
 import { useToastStore } from '@/stores/toast';
 
-const schema = z.object({
-  email: z.string().email('请输入有效的邮箱地址'),
-  password: z.string().min(6, '密码至少需要6位'),
-});
-
-type FormData = z.infer<typeof schema>;
+type FormData = { email: string; password: string };
 
 export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [mode, setMode] = useState<'email' | 'account'>('email');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const navigate = useNavigate();
   const pushToast = useToastStore((s) => s.push);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+  const isAccountMode = mode === 'account' && !isSignUp;
+
+  // 账号模式：家长手动创建的短账号（如 son），提交时映射为占位邮箱后走同一套密码登录
+  const accountPattern = /^[a-z0-9][a-z0-9_-]{1,19}$/;
+  const schema = isAccountMode
+    ? z.object({
+        email: z.string().regex(accountPattern, '账号需为 2-20 位小写字母、数字、- 或 _'),
+        password: z.string().min(6, '密码至少需要6位'),
+      })
+    : z.object({
+        email: z.string().email('请输入有效的邮箱地址'),
+        password: z.string().min(6, '密码至少需要6位'),
+      });
+
+  const { register, handleSubmit, clearErrors, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
 
@@ -39,10 +51,22 @@ export default function Login() {
     setError(null);
     setNotice(null);
 
+    let email = data.email;
+    if (isAccountMode) {
+      const account = normalizeMemberAccount(data.email);
+      const accountError = validateMemberAccount(account);
+      if (accountError) {
+        setError(accountError);
+        setIsLoading(false);
+        return;
+      }
+      email = memberAccountToEmail(account);
+    }
+
     try {
       if (isSignUp) {
         const { data: signUpData, error } = await supabase.auth.signUp({
-          email: data.email,
+          email,
           password: data.password,
           options: {
             data: {
@@ -63,7 +87,7 @@ export default function Login() {
         pushToast({ variant: 'success', title: '注册成功', message: '请登录后继续。' });
       } else {
         const { error } = await supabase.auth.signInWithPassword({
-          email: data.email,
+          email,
           password: data.password,
         });
         if (error) throw error;
@@ -105,16 +129,44 @@ export default function Login() {
               )}
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                {!isSignUp && (
+                  <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/60 p-1" role="tablist" aria-label="登录方式">
+                    {([['email', '邮箱登录'], ['account', '账号登录']] as const).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="tab"
+                        aria-selected={mode === value}
+                        onClick={() => {
+                          setMode(value);
+                          setError(null);
+                          clearErrors('email');
+                        }}
+                        className={cn(
+                          'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                          mode === value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">邮箱</label>
+                  <label className="text-sm font-medium text-foreground">{isAccountMode ? '登录账号' : '邮箱'}</label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    {isAccountMode ? (
+                      <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    ) : (
+                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    )}
                     <Input
                       {...register('email')}
-                      type="email"
-                      placeholder="your@email.com"
+                      type={isAccountMode ? 'text' : 'email'}
+                      placeholder={isAccountMode ? '例如：son' : 'your@email.com'}
                       className="pl-9"
-                      autoComplete="email"
+                      autoComplete={isAccountMode ? 'username' : 'email'}
                     />
                   </div>
                   {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
