@@ -16,6 +16,9 @@ function callWithBudget(args: Parameters<typeof callLow>[0]): Promise<{ content:
   ]).finally(() => clearTimeout(timer));
 }
 
+// 单次上游调用预算 15s；maxDuration 需显著大于该值（+鉴权/查库开销），否则慢 provider 会被平台先杀掉、管理员看不到真实测试结果。
+export const config = { maxDuration: 30 };
+
 export default async function handler(req: any, res: any) {
   await skeleton('ai.providers.test', req, res, { method: 'POST', write: true }, async (_userId, t) => {
     const parsed = z.object({ id: z.string().uuid() }).safeParse(req.body);
