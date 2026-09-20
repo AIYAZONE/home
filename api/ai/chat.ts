@@ -124,7 +124,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       module: parsed.data.module,
       provider: 'deepseek', // 兼容旧必填字段；实际调用走 callJson 注入的路由层
       callJson: async ({ system, user, temperature }) => {
-        const { content, provider } = await callRoutedChat('text', { system, user, temperature, responseFormatJson: true });
+        const { content, provider } = await callRoutedChat('text', { system, user, temperature, responseFormatJson: true }, { userId: userData.user.id });
         routedProvider = provider.name;
         console.log('[api/ai/chat] ai-call', { traceId: t, provider: provider.name, model: provider.model, costTier: provider.costTier });
         return trimJsonEnvelope(content);

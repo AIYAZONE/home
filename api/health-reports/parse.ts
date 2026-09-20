@@ -193,7 +193,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       user: prompt,
       temperature: 0,
       responseFormatJson: true,
-    });
+    }, { userId: userData.user.id });
     const content = routed.content;
     console.log('[api/health-reports/parse] ai-call', { traceId: t, provider: routed.provider.name, model: routed.provider.model, costTier: routed.provider.costTier });
 

@@ -173,7 +173,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
         system: '你是账单解析引擎。用户会提供银行账单文本，请抽取交易明细并输出严格 JSON 对象，不要输出多余文本。',
         user: prompt,
         responseFormatJson: true,
-      });
+      }, { userId: userData.user.id });
       aiProvider = routed.provider.name;
       console.log('[api/bills/parse] ai-call', { traceId: t, provider: routed.provider.name, model: routed.provider.model, costTier: routed.provider.costTier });
       content = routed.content;
@@ -187,7 +187,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
         return res.status(413).json({ message: '图片过大，请压缩后再试。', traceId: t });
       }
       // 视觉链路：env 兜底链仅 text 能力，故未配 vision 模型时链为空→友好提示（评审批 B vision 精确匹配护栏）
-      const visionChain = await getProviderChain('vision');
+      const visionChain = await getProviderChain('vision', userData.user.id);
       if (visionChain.length === 0) {
         return res.status(400).json({ message: '尚未配置视觉模型，请在 设置 → AI 模型管理 中添加 vision 模型。', traceId: t });
       }
@@ -202,7 +202,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
           categoryRules,
         responseFormatJson: true,
         imageDataUrl: `data:${mime};base64,${base64}`,
-      });
+      }, { userId: userData.user.id });
       aiProvider = routed.provider.name;
       console.log('[api/bills/parse] ai-call', { traceId: t, provider: routed.provider.name, model: routed.provider.model, costTier: routed.provider.costTier });
       content = routed.content;

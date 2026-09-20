@@ -44,8 +44,8 @@ function limit(key: string, cap: number, winMs: number): boolean {
 
 const SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner'];
 
-async function callAI(system: string, user: string, traceId: string): Promise<{ content: string; provider: string }> {
-  const { content, provider } = await callRoutedChat('text', { system, user, temperature: 0.6, responseFormatJson: true });
+async function callAI(system: string, user: string, traceId: string, userId: string): Promise<{ content: string; provider: string }> {
+  const { content, provider } = await callRoutedChat('text', { system, user, temperature: 0.6, responseFormatJson: true }, { userId });
   console.log('[api/meals/recommend] ai-call', { traceId, provider: provider.name, model: provider.model, costTier: provider.costTier });
   return { content: trimJsonEnvelope(content), provider: provider.name };
 }
@@ -125,13 +125,13 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
     let lastAiError = '';
     let usedProvider = '';
     try {
-      const r1 = await callAI(system, userPrompt, traceId);
+      const r1 = await callAI(system, userPrompt, traceId, u.user.id);
       jsonText = r1.content; usedProvider = r1.provider;
     } catch (e1) {
       lastAiError = e1 instanceof Error ? e1.message : String(e1);
       console.error('[api/meals/recommend] ai attempt 1', { traceId, message: lastAiError });
       try {
-        const r2 = await callAI(system, userPrompt + '\n注意：请严格输出规定 JSON 结构。', traceId);
+        const r2 = await callAI(system, userPrompt + '\n注意：请严格输出规定 JSON 结构。', traceId, u.user.id);
         jsonText = r2.content; usedProvider = r2.provider;
       } catch (e2) {
         const m2 = e2 instanceof Error ? e2.message : String(e2);
@@ -154,7 +154,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
         if (result.plan[slot].length > 0) continue;
         try {
           const retryUser = buildUserPrompt({ c: constraints, date, mealOnly: slot, exclude: result.removed.map((r) => r.name) });
-          const regen = await callAI(system, retryUser, traceId);
+          const regen = await callAI(system, retryUser, traceId, u.user.id);
           usedProvider = regen.provider;
           const extra = assembleResponse({ jsonText: regen.content, constraints });
           if (extra.plan[slot].length > 0) result.plan[slot] = extra.plan[slot];

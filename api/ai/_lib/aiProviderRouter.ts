@@ -17,13 +17,15 @@ export type ProviderRow = {
   api_key_encrypted: string;
   capability: Capability;
   cost_tier: 'free' | 'paid';
+  owner_user_id: string | null; // v2：NULL=平台共享，非空=用户私有
 };
 
 const CACHE_TTL_MS = 60_000;
 const PER_PROVIDER_TIMEOUT_MS = 15_000;
 const COOLDOWN_MS = 10 * 60_000;
 
-const cache = new Map<Capability, { until: number; chain: ResolvedProvider[] }>();
+// v2：链按「能力×用户」缓存（可见行、默认选择、个人优先序都随用户变）
+const cache = new Map<string, { until: number; chain: ResolvedProvider[] }>();
 const cooldownMap = new Map<string, number>();
 
 export function clearInstanceCache() {
@@ -36,19 +38,41 @@ export function resetRouterStateForTests() {
   cooldownMap.clear();
 }
 
-async function defaultLoadRows(): Promise<ProviderRow[]> {
+async function defaultLoadRows(userId: string | null): Promise<ProviderRow[]> {
+  const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) throw new Error('服务配置缺失，请联系管理员。');
+  const { createClient } = await import('@supabase/supabase-js');
+  const client = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  // 可见范围：共享行 + （登录时）该用户私有行；userId 来自 JWT sub（UUID），非用户输入
+  let query = client
+    .from('ai_providers')
+    .select('id,name,base_url,model,api_key_encrypted,capability,cost_tier,owner_user_id')
+    .eq('enabled', true);
+  query = userId
+    ? query.or(`owner_user_id.is.null,owner_user_id.eq.${userId}`)
+    : query.is('owner_user_id', null);
+  const { data, error } = await query.order('priority', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ProviderRow[];
+}
+
+/** 该用户在该能力下选定的默认模型 id（无选择/行已删 → null）。 */
+async function defaultLoadDefaultId(userId: string | null, capability: Capability): Promise<string | null> {
+  if (!userId) return null;
   const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) throw new Error('服务配置缺失，请联系管理员。');
   const { createClient } = await import('@supabase/supabase-js');
   const client = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
   const { data, error } = await client
-    .from('ai_providers')
-    .select('id,name,base_url,model,api_key_encrypted,capability,cost_tier')
-    .eq('enabled', true)
-    .order('priority', { ascending: true });
+    .from('user_model_prefs')
+    .select('provider_id')
+    .eq('user_id', userId)
+    .eq('capability', capability)
+    .maybeSingle();
   if (error) throw new Error(error.message);
-  return (data ?? []) as ProviderRow[];
+  return data?.provider_id ?? null;
 }
 
 function toChain(rows: ProviderRow[], capability: Capability): ResolvedProvider[] {
@@ -75,16 +99,31 @@ function toChain(rows: ProviderRow[], capability: Capability): ResolvedProvider[
 
 export async function getProviderChain(
   capability: Capability,
-  deps?: { loadRows?: () => Promise<ProviderRow[]> },
+  userId?: string | null,
+  deps?: { loadRows?: (userId: string | null) => Promise<ProviderRow[]>; loadDefaultId?: (userId: string | null, capability: Capability) => Promise<string | null> },
 ): Promise<ResolvedProvider[]> {
-  const hit = cache.get(capability);
+  const key = `${capability}:${userId ?? ''}`;
+  const hit = cache.get(key);
   const now = Date.now();
   if (hit && hit.until > now) return hit.chain;
   try {
-    const rows = await (deps?.loadRows ?? defaultLoadRows)();
-    const chain = toChain(rows, capability);
+    const rows = await (deps?.loadRows ?? defaultLoadRows)(userId ?? null);
+    // 个人优先降级（spec §5.1）：默认→个人→共享，各域内保持 priority 升序（sort 稳定）
+    const ordered = [...rows].sort((a, b) => (a.owner_user_id !== null ? 0 : 1) - (b.owner_user_id !== null ? 0 : 1));
+    let chain = toChain(ordered, capability);
+    // 默认选择只影响链首顺序，查不到/失败不炸整链（退化为不置顶的常规优先序）
+    let defaultId: string | null = null;
+    try {
+      defaultId = await (deps?.loadDefaultId ?? defaultLoadDefaultId)(userId ?? null, capability);
+    } catch (err: unknown) {
+      console.warn('[aiRouter] default pref load skipped', { message: err instanceof Error ? err.message : String(err) });
+    }
+    if (defaultId) {
+      const i = chain.findIndex((p) => p.id === defaultId);
+      if (i > 0) chain = [chain[i], ...chain.slice(0, i), ...chain.slice(i + 1)];
+    }
     if (chain.length > 0) {
-      cache.set(capability, { until: now + CACHE_TTL_MS, chain });
+      cache.set(key, { until: now + CACHE_TTL_MS, chain });
       return chain;
     }
   } catch (err: unknown) {
@@ -114,9 +153,15 @@ export function providerCall(p: ResolvedProvider, req: RoutedRequest): Promise<{
 export async function callRoutedChat(
   capability: Capability,
   request: RoutedRequest,
-  deps?: { loadRows?: () => Promise<ProviderRow[]>; call?: ProviderCall; now?: () => number },
+  ctx?: { userId?: string | null },
+  deps?: {
+    loadRows?: (userId: string | null) => Promise<ProviderRow[]>;
+    loadDefaultId?: (userId: string | null, capability: Capability) => Promise<string | null>;
+    call?: ProviderCall;
+    now?: () => number;
+  },
 ): Promise<{ content: string; provider: ResolvedProvider }> {
-  const chain = await getProviderChain(capability, deps);
+  const chain = await getProviderChain(capability, ctx?.userId ?? null, deps);
   return runChain({
     chain,
     request,
