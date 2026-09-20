@@ -402,6 +402,8 @@ export type MealSlot = 'breakfast' | 'lunch' | 'dinner';
 export interface MealDish {
   name: string;
   why: string;
+  /** 做法步骤（AI 生成；存量旧方案可能没有） */
+  steps?: string[];
 }
 
 export interface MealPlanData {

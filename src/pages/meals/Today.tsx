@@ -283,6 +283,18 @@ export default function MealsToday() {
                           <div className="min-w-0">
                             <div className="text-sm font-medium text-foreground">{dish.name}</div>
                             {dish.why && <div className="mt-0.5 text-xs text-muted-foreground">{dish.why}</div>}
+                            {dish.steps && dish.steps.length > 0 && (
+                              <details className="mt-1.5">
+                                <summary className="w-fit cursor-pointer select-none list-none text-xs font-medium text-primary [&::-webkit-details-marker]:hidden">
+                                  怎么做 ▾
+                                </summary>
+                                <ol className="mt-1.5 space-y-1 border-l-2 border-primary/25 pl-2.5 text-xs leading-relaxed text-muted-foreground">
+                                  {dish.steps.map((step, j) => (
+                                    <li key={j}>{step}</li>
+                                  ))}
+                                </ol>
+                              </details>
+                            )}
                           </div>
                           {canGenerate && (
                             <button

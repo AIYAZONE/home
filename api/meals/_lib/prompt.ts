@@ -4,8 +4,9 @@ import type { MealSlot } from './mealSchemas';
 export function buildSystemPrompt(c: ConstraintSet): string {
   const lines = [
     '你是家庭膳食推荐助手。为一桌全家共餐推荐一日三餐家常菜，输出严格 JSON，不含多余文本。',
-    'JSON 结构：{"breakfast":[{"name":"","why":""}],"lunch":[...],"dinner":[...],"notes":""}。每餐 2-4 道菜。',
-    c.allergens.length ? `【绝对红线·过敏原】菜名与理由中绝不出现：${c.allergens.join('、')}。` : '【过敏原】无。',
+    'JSON 结构：{"breakfast":[{"name":"","why":"","steps":[""]}],"lunch":[...],"dinner":[...],"notes":""}。每餐 2-4 道菜。',
+    '每道菜附 steps：3-5 条简短做法步骤（含关键食材与大致用量），家庭灶台可直接照做。',
+    c.allergens.length ? `【绝对红线·过敏原】菜名、理由与做法步骤中绝不出现：${c.allergens.join('、')}。` : '【过敏原】无。',
     c.healthRedlines.length ? `【健康约束】需照顾：${c.healthRedlines.join('、')}。` : '',
     c.disliked.length ? `【口味·尽量回避】${c.disliked.join('、')}。` : '',
     `【辣度上限】全家可接受最高辣度=${c.spicyMax}（none/mil/med/hot）。`,

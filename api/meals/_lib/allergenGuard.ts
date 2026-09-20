@@ -1,7 +1,8 @@
 import type { Dish, MealSlot, RawPlan, RemovedDish } from './mealSchemas';
 
 export function dishText(dish: Dish): string {
-  return `${dish.name} ${dish.why}`.toLowerCase();
+  // steps 参与扫描：过敏原可能只出现在做法里（菜名/理由干净但步骤加虾仁），红线不容绕过
+  return `${dish.name} ${dish.why} ${(dish.steps ?? []).join(' ')}`.toLowerCase();
 }
 
 function matchAllergen(dish: Dish, allergens: string[]): string | null {

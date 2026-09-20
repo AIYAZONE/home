@@ -6,6 +6,8 @@ export type MealSlot = z.infer<typeof MealSlot>;
 export const DishSchema = z.object({
   name: z.string().min(1),
   why: z.string().default(''),
+  // 做法步骤（可选，兼容存量方案）；过敏原拦截会一并扫描
+  steps: z.array(z.string().min(1)).max(8).optional(),
 });
 export type Dish = z.infer<typeof DishSchema>;
 
