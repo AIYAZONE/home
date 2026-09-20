@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { clearInstanceCache } from '../_lib/aiProviderRouter.js';
-import { canManageRow } from '../_lib/adminGuard.js';
+import { decideManage } from '../_lib/adminGuard.js';
 import { adminClient, skeleton } from '../_lib/endpointKit.js';
 
 export default async function handler(req: any, res: any) {
@@ -20,10 +20,15 @@ export default async function handler(req: any, res: any) {
     if (!rows || rows.length !== parsed.data.ids.length)
       return res.status(400).json({ message: '部分模型不存在或已被删除。', traceId: t });
     const owners = new Map(rows.map((r: { id: string; owner_user_id: string | null }) => [r.id, r.owner_user_id]));
+    // 三态语义与 update/delete 对齐：他人私有行按「部分模型不存在」回应，共享行非白名单才 403
+    let forbidden = false;
     for (const id of parsed.data.ids) {
-      if (!canManageRow(ctx, { owner_user_id: owners.get(id) ?? null }))
-        return res.status(403).json({ message: '无权调整部分模型的顺序。', traceId: t });
+      const decision = decideManage(ctx, { owner_user_id: owners.get(id) ?? null });
+      if (decision === 'gone')
+        return res.status(400).json({ message: '部分模型不存在或已被删除。', traceId: t });
+      if (decision === 'forbidden') forbidden = true;
     }
+    if (forbidden) return res.status(403).json({ message: '无权调整部分模型的顺序。', traceId: t });
     if (new Set(rows.map((r: { owner_user_id: string | null }) => (r.owner_user_id === null ? 'shared' : 'own'))).size > 1)
       return res.status(400).json({ message: '不能跨分区调整顺序。', traceId: t });
     for (let i = 0; i < parsed.data.ids.length; i += 1) {

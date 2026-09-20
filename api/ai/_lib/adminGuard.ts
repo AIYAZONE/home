@@ -64,3 +64,16 @@ export function canManageRow(ctx: AuthContext, row: { owner_user_id: string | nu
 export function canViewRow(ctx: AuthContext, row: { owner_user_id: string | null }): boolean {
   return row.owner_user_id === null || row.owner_user_id === ctx.userId;
 }
+
+/**
+ * 写操作权限三态（终审 Minor-2 统一语义）：
+ * - ok：可管理（自己的行，或白名单邮箱×共享行）
+ * - gone：行不存在或他人私有行——对外统一按「模型不存在」回应，不泄露行存在性（与 test/set-default 的裁决对齐）
+ * - forbidden：共享行但邮箱不在白名单——行本就公开可见，403 不泄露新信息
+ */
+export function decideManage(ctx: AuthContext, row: { owner_user_id: string | null } | null | undefined): 'ok' | 'gone' | 'forbidden' {
+  if (!row) return 'gone';
+  if (row.owner_user_id === ctx.userId) return 'ok';
+  if (row.owner_user_id === null) return isSharedPoolAdmin(ctx.email) ? 'ok' : 'forbidden';
+  return 'gone';
+}

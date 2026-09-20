@@ -3,6 +3,7 @@ import {
   bearerToken,
   canManageRow,
   canViewRow,
+  decideManage,
   isSharedPoolAdmin,
   requireUser,
   type AuthContext,
@@ -65,6 +66,22 @@ describe('canManageRow / canViewRow（行级归属）', () => {
     expect(canViewRow(me, { owner_user_id: null })).toBe(true);
     expect(canManageRow(me, { owner_user_id: null })).toBe(false);
     expect(canManageRow({ userId: 'u9', email: 'pool@x.test' }, { owner_user_id: null })).toBe(true);
+    vi.unstubAllEnvs();
+  });
+});
+
+describe('decideManage（三态统一语义，终审 Minor-2）', () => {
+  it('行不存在/他人私有行 → gone；自己行 → ok', () => {
+    expect(decideManage(me, null)).toBe('gone');
+    expect(decideManage(me, undefined)).toBe('gone');
+    expect(decideManage(me, { owner_user_id: 'u2' })).toBe('gone');
+    expect(decideManage(me, { owner_user_id: 'u1' })).toBe('ok');
+  });
+
+  it('共享行：白名单邮箱 → ok；否则 → forbidden（唯一保留 403 的场景）', () => {
+    vi.stubEnv('AI_SHARED_POOL_EMAILS', 'pool@x.test');
+    expect(decideManage(me, { owner_user_id: null })).toBe('forbidden');
+    expect(decideManage({ userId: 'u9', email: 'pool@x.test' }, { owner_user_id: null })).toBe('ok');
     vi.unstubAllEnvs();
   });
 });

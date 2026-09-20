@@ -25,6 +25,11 @@ create table if not exists public.ai_providers (
   updated_at timestamptz not null default now()
 );
 
+-- v1→v2 升级路径：若库曾按 v1 建过 ai_providers（无 owner_user_id 列），此处补列；全新安装时上面 create 已含该列，本句 no-op。
+-- 升级时存量行 owner_user_id 为 NULL → 自然归为平台共享行（v1 语义本就是平台级清单），无需数据迁移。
+alter table public.ai_providers
+  add column if not exists owner_user_id uuid references public.users(id) on delete cascade;
+
 -- 归属 + 能力 + 启用 + 优先级：路由链解析与「我的/共享」列表都走它。
 create index if not exists idx_ai_providers_owner_cap on public.ai_providers(owner_user_id, capability, enabled, priority asc);
 create index if not exists idx_ai_providers_shared on public.ai_providers(capability, enabled, priority asc) where owner_user_id is null;
