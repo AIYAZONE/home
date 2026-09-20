@@ -55,9 +55,8 @@ export function isSharedPoolAdmin(email: string | null, allowCsv?: string): bool
 
 /** 当前用户能否管理某条模型行：自己的私有行，或（白名单邮箱下的）共享行。 */
 export function canManageRow(ctx: AuthContext, row: { owner_user_id: string | null }): boolean {
-  if (row.owner_user_id === ctx.userId) return true;
   if (row.owner_user_id === null) return isSharedPoolAdmin(ctx.email);
-  return false;
+  return row.owner_user_id === ctx.userId;
 }
 
 /** 某行对当前用户是否可见：共享行或自己私有行。 */
@@ -73,7 +72,8 @@ export function canViewRow(ctx: AuthContext, row: { owner_user_id: string | null
  */
 export function decideManage(ctx: AuthContext, row: { owner_user_id: string | null } | null | undefined): 'ok' | 'gone' | 'forbidden' {
   if (!row) return 'gone';
-  if (row.owner_user_id === ctx.userId) return 'ok';
+  // 共享行判定前置：防运行时 userId 异常为 null 时错误命中「自己行」（scoped 复审 Minor）
   if (row.owner_user_id === null) return isSharedPoolAdmin(ctx.email) ? 'ok' : 'forbidden';
+  if (row.owner_user_id === ctx.userId) return 'ok';
   return 'gone';
 }
