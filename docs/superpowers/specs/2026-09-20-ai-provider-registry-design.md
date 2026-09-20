@@ -1,6 +1,6 @@
 # AI 模型清单管理（免费算力优先）— 设计稿
 
-> 日期：2026-09-20 ｜ 类型：新子系统（架构级，改造现有 AI 调用层） ｜ 状态：待用户审阅
+> 日期：2026-09-20 ｜ 类型：新子系统（架构级，改造现有 AI 调用层） ｜ 状态：已批准并实施
 > 定位：把「接哪家大模型的免费额度」从代码/环境变量决策，变成**平台管理员在界面上自由增删改的数据决策**。免费 provider 优先路由、额度耗尽自动降级付费兜底，收费模型也可在界面上手动绑定。
 
 ## 0. 决策摘要（TL;DR）
@@ -152,9 +152,9 @@ callRoutedChat(capability, { system, user, temperature?, maxChars? }): Promise<{
 | `api/ai/providers/list.ts` | GET | 全部条目（仅掩码），管理员专用 |
 | `api/ai/providers/create.ts` | POST | 校验 name/base_url/model/apiKey/capability/cost_tier；生成掩码+加密入库；priority 缺省 = 当前 max+1 |
 | `api/ai/providers/update.ts` | PATCH | 字段级更新；apiKey 留空 = 不修改；写后清本实例缓存（其余实例 60s 缓存自然收敛） |
-| `api/ai/providers/delete.ts` | DELETE | 物理删除 + 本实例缓存清理（其余实例 60s 收敛） |
+| `api/ai/providers/delete.ts` | POST | 物理删除 + 本实例缓存清理（其余实例 60s 收敛）。方法用 POST 而非 DELETE，与账户删除端点及 serverless 约定一致 |
 | `api/ai/providers/reorder.ts` | POST | 接收有序 id 数组，事务重写 priority |
-| `api/ai/providers/test.ts` | POST | 对该条目发一次最小 chat 请求（"回复 ok"），回传 `{status, latencyMs, error?}`，写 test_status/test_detail/tested_at；失败**不**污染路由冷却表 |
+| `api/ai/providers/test.ts` | POST | 对该条目发一次最小 chat 请求（"回复 ok"），回传 `{status, latencyMs, detail?}`，写 test_status/test_detail/tested_at；失败**不**污染路由冷却表 |
 
 统一守卫（每个端点第一段）：
 
