@@ -114,6 +114,10 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       ? { baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1', apiKey: process.env.OPENAI_API_KEY ?? '', model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini' }
       : { baseUrl: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY ?? '', model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat' };
 
+    if (!cfg.apiKey) {
+      return res.status(500).json({ message: `AI 服务密钥未配置（缺少 ${provider === 'openai' ? 'OPENAI_API_KEY' : 'DEEPSEEK_API_KEY'} 环境变量）。`, traceId });
+    }
+
     const system = buildSystemPrompt(constraints);
     const userPrompt = buildUserPrompt({ c: constraints, date, mealOnly: swap?.meal, exclude: swap ? [swap.dish] : undefined });
 

@@ -3,12 +3,14 @@ import react from '@vitejs/plugin-react'
 import tsconfigPaths from "vite-tsconfig-paths";
 import { VitePWA } from 'vite-plugin-pwa'
 
-function localBillsApiPlugin(): Plugin {
+type LocalApiHandler = (req: any, res: any) => Promise<void>;
+
+function localApiPlugin(name: string, path: string, loadHandler: () => Promise<LocalApiHandler>, fallbackMessage: string): Plugin {
   return {
-    name: 'local-bills-api',
+    name,
     apply: 'serve',
     configureServer(server) {
-      server.middlewares.use('/api/bills/parse', async (req, res) => {
+      server.middlewares.use(path, async (req, res) => {
         if ((req.method ?? 'GET').toUpperCase() !== 'POST') {
           res.statusCode = 405;
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -27,7 +29,7 @@ function localBillsApiPlugin(): Plugin {
             body = undefined;
           }
 
-          const { default: handler } = await import('./api/bills/parse');
+          const handler = await loadHandler();
           let statusCode = 200;
           const respLike = {
             status(code: number) {
@@ -52,7 +54,7 @@ function localBillsApiPlugin(): Plugin {
           } catch {
             res.statusCode = 500;
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ message: '识别失败，请稍后再试。' }));
+            res.end(JSON.stringify({ message: fallbackMessage }));
           }
         });
       });
@@ -60,167 +62,20 @@ function localBillsApiPlugin(): Plugin {
   };
 }
 
-function localAiApiPlugin(): Plugin {
-  return {
-    name: 'local-ai-api',
-    apply: 'serve',
-    configureServer(server) {
-      server.middlewares.use('/api/ai/chat', async (req, res) => {
-        if ((req.method ?? 'GET').toUpperCase() !== 'POST') {
-          res.statusCode = 405;
-          res.setHeader('Content-Type', 'application/json; charset=utf-8');
-          res.end(JSON.stringify({ message: '不支持的请求方法。' }));
-          return;
-        }
+const localBillsApiPlugin = () =>
+  localApiPlugin('local-bills-api', '/api/bills/parse', async () => (await import('./api/bills/parse')).default, '识别失败，请稍后再试。');
 
-        const chunks: Buffer[] = [];
-        req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(String(c))));
-        req.on('end', async () => {
-          let body: unknown = undefined;
-          try {
-            const raw = Buffer.concat(chunks).toString('utf8');
-            body = raw ? JSON.parse(raw) : undefined;
-          } catch {
-            body = undefined;
-          }
+const localAiApiPlugin = () =>
+  localApiPlugin('local-ai-api', '/api/ai/chat', async () => (await import('./api/ai/chat')).default, 'AI 服务暂时不可用，请稍后再试。');
 
-          const { default: handler } = await import('./api/ai/chat');
-          let statusCode = 200;
-          const respLike = {
-            status(code: number) {
-              statusCode = code;
-              return respLike;
-            },
-            setHeader(key: string, value: string) {
-              res.setHeader(key, value);
-            },
-            json(payload: unknown) {
-              res.statusCode = statusCode;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify(payload));
-            },
-          };
+const localHealthApiPlugin = () =>
+  localApiPlugin('local-health-api', '/api/health-reports/parse', async () => (await import('./api/health-reports/parse')).default, '解析失败，请稍后再试。');
 
-          try {
-            await handler({ method: req.method, headers: req.headers as any, body }, respLike as any);
-          } catch {
-            res.statusCode = 500;
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ message: 'AI 服务暂时不可用，请稍后再试。' }));
-          }
-        });
-      });
-    },
-  };
-}
+const localAccountApiPlugin = () =>
+  localApiPlugin('local-account-api', '/api/account/delete', async () => (await import('./api/account/delete')).default, '请求失败，请稍后再试。');
 
-function localHealthApiPlugin(): Plugin {
-  return {
-    name: 'local-health-api',
-    apply: 'serve',
-    configureServer(server) {
-      server.middlewares.use('/api/health-reports/parse', async (req, res) => {
-        if ((req.method ?? 'GET').toUpperCase() !== 'POST') {
-          res.statusCode = 405;
-          res.setHeader('Content-Type', 'application/json; charset=utf-8');
-          res.end(JSON.stringify({ message: '不支持的请求方法。' }));
-          return;
-        }
-
-        const chunks: Buffer[] = [];
-        req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(String(c))));
-        req.on('end', async () => {
-          let body: unknown = undefined;
-          try {
-            const raw = Buffer.concat(chunks).toString('utf8');
-            body = raw ? JSON.parse(raw) : undefined;
-          } catch {
-            body = undefined;
-          }
-
-          const { default: handler } = await import('./api/health-reports/parse');
-          let statusCode = 200;
-          const respLike = {
-            status(code: number) {
-              statusCode = code;
-              return respLike;
-            },
-            setHeader(key: string, value: string) {
-              res.setHeader(key, value);
-            },
-            json(payload: unknown) {
-              res.statusCode = statusCode;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify(payload));
-            },
-          };
-
-          try {
-            await handler({ method: req.method, headers: req.headers as any, body }, respLike as any);
-          } catch {
-            res.statusCode = 500;
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ message: '解析失败，请稍后再试。' }));
-          }
-        });
-      });
-    },
-  };
-}
-
-function localAccountApiPlugin(): Plugin {
-  return {
-    name: 'local-account-api',
-    apply: 'serve',
-    configureServer(server) {
-      server.middlewares.use('/api/account/delete', async (req, res) => {
-        if ((req.method ?? 'GET').toUpperCase() !== 'POST') {
-          res.statusCode = 405;
-          res.setHeader('Content-Type', 'application/json; charset=utf-8');
-          res.end(JSON.stringify({ message: '不支持的请求方法。' }));
-          return;
-        }
-
-        const chunks: Buffer[] = [];
-        req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(String(c))));
-        req.on('end', async () => {
-          let body: unknown = undefined;
-          try {
-            const raw = Buffer.concat(chunks).toString('utf8');
-            body = raw ? JSON.parse(raw) : undefined;
-          } catch {
-            body = undefined;
-          }
-
-          const { default: handler } = await import('./api/account/delete');
-          let statusCode = 200;
-          const respLike = {
-            status(code: number) {
-              statusCode = code;
-              return respLike;
-            },
-            setHeader(key: string, value: string) {
-              res.setHeader(key, value);
-            },
-            json(payload: unknown) {
-              res.statusCode = statusCode;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify(payload));
-            },
-          };
-
-          try {
-            await handler({ method: req.method, headers: req.headers as any, body }, respLike as any);
-          } catch {
-            res.statusCode = 500;
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ message: '请求失败，请稍后再试。' }));
-          }
-        });
-      });
-    },
-  };
-}
+const localMealsApiPlugin = () =>
+  localApiPlugin('local-meals-api', '/api/meals/recommend', async () => (await import('./api/meals/recommend')).default, '请求失败，请稍后再试。');
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -244,6 +99,7 @@ export default defineConfig(({ mode }) => {
       localAiApiPlugin(),
       localHealthApiPlugin(),
       localAccountApiPlugin(),
+      localMealsApiPlugin(),
       VitePWA({
         registerType: 'prompt',
         includeAssets: ['favicon.svg', 'brand-mark.svg'],

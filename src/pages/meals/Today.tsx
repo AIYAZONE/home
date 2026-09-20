@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Moon, RefreshCw, Save, Sun, Sunset, Sparkles, Utensils } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Moon, RefreshCw, Save, Sun, Sunset, Sparkles, Utensils, Users } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +11,7 @@ import { Page, PageDescription, PageHeader, PageTitle } from '@/components/ui/pa
 import { useRecommendMeals, type RecommendMealsInput } from '@/hooks/useRecommendMeals';
 import { useMealPlan } from '@/hooks/useMealPlan';
 import { useProfile } from '@/hooks/useProfile';
+import { useFamilyMealConstraints, spicyLabel, type MemberMealSummary } from '@/hooks/useFamilyMealConstraints';
 import { toUserMessage } from '@/lib/error';
 import type { MealPlanData, MealRemoved, MealSlot } from '@/types';
 
@@ -27,6 +29,26 @@ function today(): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function MemberConstraintRow({ member }: { member: MemberMealSummary }) {
+  const hasAnything = member.allergies || member.disliked || member.liked || member.spicyLevel;
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5 text-sm">
+      <span className="font-medium text-foreground">{member.name}</span>
+      {member.allergies && (
+        <Badge variant="danger">过敏：{member.allergies}</Badge>
+      )}
+      {member.disliked && <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">忌口：{member.disliked}</span>}
+      {member.liked && <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">爱吃：{member.liked}</span>}
+      {spicyLabel(member.spicyLevel) && (
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">辣度：{spicyLabel(member.spicyLevel)}</span>
+      )}
+      {!hasAnything && (
+        <span className="text-xs text-muted-foreground">还没设置口味与健康约束</span>
+      )}
+    </div>
+  );
 }
 
 export default function MealsToday() {
@@ -48,6 +70,7 @@ export default function MealsToday() {
   const { plan: savedPlan, savePlan, isSaving } = useMealPlan(date);
   const { data: profile } = useProfile();
   const canGenerate = profile?.role === 'admin' || profile?.role === 'parent';
+  const { members: constraintMembers } = useFamilyMealConstraints();
 
   const mergeRemoved = (prev: MealRemoved[], added: MealRemoved[]): MealRemoved[] => {
     const seen = new Set(prev.map((r) => `${r.meal}-${r.name}`));
@@ -170,6 +193,28 @@ export default function MealsToday() {
           )}
         </CardContent>
       </Card>
+
+      {(constraintMembers?.length ?? 0) > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" />
+                <CardTitle className="text-base">本次推荐将结合 {constraintMembers.length} 位成员的口味与健康约束</CardTitle>
+              </div>
+              <Link to="/settings/taste" className="text-xs text-primary hover:underline">
+                去设置
+              </Link>
+            </div>
+            <CardDescription>过敏原来自健康档案，忌口与口味来自设置里的「家庭口味偏好」。</CardDescription>
+          </CardHeader>
+          <CardContent className="divide-y divide-border/60 pt-0">
+            {constraintMembers.map((m) => (
+              <MemberConstraintRow key={m.userId} member={m} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {showError && (
         <Alert variant="danger">
