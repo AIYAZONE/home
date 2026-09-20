@@ -1,5 +1,6 @@
 import { authGetUser } from '../_lib/supabaseAuthCompat.js';
 import { z } from 'zod';
+import { callRoutedChat } from '../ai/_lib/aiProviderRouter.js';
 
 type RequestLike = {
   method?: string;
@@ -67,42 +68,6 @@ function toSafeMessage(input: unknown): string {
   const message = input instanceof Error ? input.message : typeof input === 'string' ? input : '';
   if (/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(message)) return message;
   return '解析失败，请稍后再试。';
-}
-
-async function callOpenAiCompatChat(args: { baseUrl: string; apiKey: string; body: any }) {
-  const base = args.baseUrl.replace(/\/+$/, '');
-  const res = await fetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${args.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(args.body),
-  });
-
-  const json = await res.json().catch(() => null);
-  if (!res.ok) {
-    const msg = typeof json?.error?.message === 'string' ? json.error.message : '';
-    throw new Error(msg || '解析失败，请稍后再试。');
-  }
-
-  const content = json?.choices?.[0]?.message?.content;
-  if (typeof content !== 'string' || !content.trim()) throw new Error('解析失败，请稍后再试。');
-  return trimJsonEnvelope(content);
-}
-
-async function withServerTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 }
 
 const BodySchema = z.object({
@@ -216,51 +181,16 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       return res.status(413).json({ message: '文本过长，请分段后再试。', traceId: t });
     }
 
-    const provider = (process.env.BILL_LLM_PROVIDER ?? 'deepseek').toLowerCase();
     const prompt = buildPrompt(parsed.data.text);
 
-    let content = '';
-    if (provider === 'deepseek') {
-      const apiKey = process.env.DEEPSEEK_API_KEY;
-      if (!apiKey) return res.status(500).json({ message: '识别服务未配置，请联系管理员。', traceId: t });
-      content = await withServerTimeout(
-        callOpenAiCompatChat({
-          baseUrl: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
-          apiKey,
-          body: {
-            model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
-            temperature: 0,
-            response_format: { type: 'json_object' },
-            messages: [
-              { role: 'system', content: '你是体检报告结构化引擎，只输出严格 JSON。' },
-              { role: 'user', content: prompt },
-            ],
-          },
-        }),
-        80_000,
-        '解析超时，请稍后重试。',
-      );
-    } else {
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) return res.status(500).json({ message: '识别服务未配置，请联系管理员。', traceId: t });
-      content = await withServerTimeout(
-        callOpenAiCompatChat({
-          baseUrl: 'https://api.openai.com/v1',
-          apiKey,
-          body: {
-            model: 'gpt-4o-mini',
-            temperature: 0,
-            response_format: { type: 'json_object' },
-            messages: [
-              { role: 'system', content: '你是体检报告结构化引擎，只输出严格 JSON。' },
-              { role: 'user', content: prompt },
-            ],
-          },
-        }),
-        80_000,
-        '解析超时，请稍后重试。',
-      );
-    }
+    const routed = await callRoutedChat('text', {
+      system: '你是体检报告结构化引擎，只输出严格 JSON。',
+      user: prompt,
+      temperature: 0,
+      responseFormatJson: true,
+    });
+    const content = routed.content;
+    console.log('[api/health-reports/parse] ai-call', { traceId: t, provider: routed.provider.name, model: routed.provider.model, costTier: routed.provider.costTier });
 
     const result = ParseResultSchema.parse(JSON.parse(trimJsonEnvelope(content)));
     return res.status(200).json({
@@ -268,6 +198,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       warnings: result.warnings ?? [],
       confidence_summary: result.confidence_summary ?? {},
       unmapped_lines: result.unmapped_lines ?? [],
+      provider: routed.provider.name,
       traceId: t,
     });
   } catch (err: unknown) {

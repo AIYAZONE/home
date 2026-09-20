@@ -1,5 +1,6 @@
 import { authGetUser } from '../_lib/supabaseAuthCompat.js';
 import { z } from 'zod';
+import { callRoutedChat, getProviderChain } from '../ai/_lib/aiProviderRouter.js';
 
 type RequestLike = {
   method?: string;
@@ -98,88 +99,6 @@ function trimJsonEnvelope(text: string): string {
   return s;
 }
 
-async function callOpenAiCompatChat(args: { baseUrl: string; apiKey: string; body: any }) {
-  const base = args.baseUrl.replace(/\/+$/, '');
-  const res = await fetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${args.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(args.body),
-  });
-
-  const json = await res.json().catch(() => null);
-  if (!res.ok) {
-    const msg = typeof json?.error?.message === 'string' ? json.error.message : '';
-    throw new Error(msg || '识别失败，请稍后再试。');
-  }
-
-  const content = json?.choices?.[0]?.message?.content;
-  if (typeof content !== 'string' || !content.trim()) throw new Error('识别失败，请稍后再试。');
-  return trimJsonEnvelope(content);
-}
-
-async function callOpenAiVision(args: { apiKey: string; mime: string; base64: string }) {
-  const dataUrl = `data:${args.mime};base64,${args.base64}`;
-  return callOpenAiCompatChat({
-    baseUrl: 'https://api.openai.com/v1',
-    apiKey: args.apiKey,
-    body: {
-      model: 'gpt-4o-mini',
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: '你是账单识别引擎。请从用户提供的银行账单截图中提取交易明细，输出严格 JSON 对象，不要输出多余文本。',
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text:
-                '请识别本月账单中的每一笔交易，输出 JSON：{ "items": [{ "date":"YYYY-MM-DD","type":"income|expense","amount":123.45,"description":string|null,"category":string|null }], "warnings":[string] }。amount 必须为正数；type 用“收入/支出”判断；无法判断则跳过该行并写入 warnings。description 用商户/摘要/对方信息等；category 若无把握就 null。',
-            },
-            { type: 'image_url', image_url: { url: dataUrl } },
-          ],
-        },
-      ],
-    },
-  });
-}
-
-async function callDeepseekText(args: { apiKey: string; text: string }) {
-  return callOpenAiCompatChat({
-    baseUrl: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
-    apiKey: args.apiKey,
-    body: {
-      model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: '你是账单解析引擎。用户会提供银行账单文本，请抽取交易明细并输出严格 JSON 对象，不要输出多余文本。',
-        },
-        {
-          role: 'user',
-          content:
-            '从下方文本中提取交易明细，输出 JSON：{ "items": [{ "date":"YYYY-MM-DD","type":"income|expense","amount":123.45,"description":string|null,"category":string|null }], "warnings":[string] }。\n' +
-            '- amount 必须为正数\n' +
-            '- type 用“收入/支出/存入/转入/转出/付款”等语义判断\n' +
-            '- 若某行缺日期或金额则跳过，并把原因写入 warnings\n' +
-            '- description 用商户/摘要/对方信息\n' +
-            '- category 若无把握就 null\n' +
-            '\n文本如下：\n' +
-            args.text,
-        },
-      ],
-    },
-  });
-}
-
 export default async function handler(req: RequestLike, res: ResponseLike) {
   const t = traceId();
   res.setHeader('Cache-Control', 'no-store');
@@ -220,54 +139,39 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
     }
 
     const input = parsed.data as any;
-    const provider = (process.env.BILL_LLM_PROVIDER ?? 'deepseek').toLowerCase();
     const rawCategories: string[] = Array.isArray(input.categories) ? input.categories : [];
     const categories = Array.from(new Set(rawCategories.map((x) => String(x).trim()).filter(Boolean))).slice(0, 120);
     const defaultCategory = typeof input.defaultCategory === 'string' && input.defaultCategory.trim() ? input.defaultCategory.trim() : null;
 
+    const categoryRules =
+      (categories.length > 0
+        ? `- category 必须从候选分类中选择一个；没有把握就输出 null\n候选分类：${categories.join('、')}\n`
+        : '- category 若无把握就 null\n') +
+      (defaultCategory ? `- 若无法判断分类，优先使用默认分类：${defaultCategory}\n` : '');
+
     let content = '';
+    let aiProvider = '';
     if (typeof input.text === 'string') {
       if (input.text.length > 200_000) {
         return res.status(413).json({ message: '文本过长，请分段或裁剪后再试。', traceId: t });
       }
-      const deepseekKey = process.env.DEEPSEEK_API_KEY;
-      if (provider === 'deepseek') {
-        if (!deepseekKey) return res.status(500).json({ message: '识别服务未配置，请联系管理员。', traceId: t });
-        const prompt =
-          '从下方文本中提取交易明细，输出 JSON：{ "items": [{ "date":"YYYY-MM-DD","type":"income|expense","amount":123.45,"description":string|null,"category":string|null }], "warnings":[string] }。\n' +
-          '- amount 必须为正数\n' +
-          '- type 用“收入/支出/存入/转入/转出/付款”等语义判断\n' +
-          '- 若某行缺日期或金额则跳过，并把原因写入 warnings\n' +
-          '- description 用商户/摘要/对方信息\n' +
-          (categories.length > 0
-            ? `- category 必须从候选分类中选择一个；没有把握就输出 null\n候选分类：${categories.join('、')}\n`
-            : '- category 若无把握就 null\n') +
-          (defaultCategory ? `- 若无法判断分类，优先使用默认分类：${defaultCategory}\n` : '') +
-          '\n文本如下：\n' +
-          input.text;
-        content = await callDeepseekText({ apiKey: deepseekKey, text: prompt });
-      } else {
-        const openaiKey = process.env.OPENAI_API_KEY;
-        if (!openaiKey) return res.status(500).json({ message: '识别服务未配置，请联系管理员。', traceId: t });
-        content = await callOpenAiCompatChat({
-          baseUrl: 'https://api.openai.com/v1',
-          apiKey: openaiKey,
-          body: {
-            model: 'gpt-4o-mini',
-            temperature: 0,
-            response_format: { type: 'json_object' },
-            messages: [
-              { role: 'system', content: '你是账单解析引擎。请从用户提供的账单文本中提取交易并输出严格 JSON。' },
-              {
-                role: 'user',
-                content:
-                  (categories.length > 0 ? `候选分类：${categories.join('、')}\ncategory 必须从候选分类中选择一个；没有把握就输出 null。\n\n` : '') +
-                  input.text,
-              },
-            ],
-          },
-        });
-      }
+      const prompt =
+        '从下方文本中提取交易明细，输出 JSON：{ "items": [{ "date":"YYYY-MM-DD","type":"income|expense","amount":123.45,"description":string|null,"category":string|null }], "warnings":[string] }。\n' +
+        '- amount 必须为正数\n' +
+        '- type 用“收入/支出/存入/转入/转出/付款”等语义判断\n' +
+        '- 若某行缺日期或金额则跳过，并把原因写入 warnings\n' +
+        '- description 用商户/摘要/对方信息\n' +
+        categoryRules +
+        '\n文本如下：\n' +
+        input.text;
+      const routed = await callRoutedChat('text', {
+        system: '你是账单解析引擎。用户会提供银行账单文本，请抽取交易明细并输出严格 JSON 对象，不要输出多余文本。',
+        user: prompt,
+        responseFormatJson: true,
+      });
+      aiProvider = routed.provider.name;
+      console.log('[api/bills/parse] ai-call', { traceId: t, provider: routed.provider.name, model: routed.provider.model, costTier: routed.provider.costTier });
+      content = routed.content;
     } else {
       const { mime, base64 } = input as { mime: string; base64: string };
       const allowed = new Set(['image/png', 'image/jpeg', 'image/webp']);
@@ -277,12 +181,26 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       if (base64.length > 10_000_000) {
         return res.status(413).json({ message: '图片过大，请压缩后再试。', traceId: t });
       }
-      if (provider === 'deepseek') {
-        return res.status(400).json({ message: 'DeepSeek 当前不支持图片直传识别，请先做 OCR 提取文本后再识别。', traceId: t });
+      // 视觉链路：env 兑底链仅 text 能力，故未配 vision 模型时链为空→友好提示（评审批 B vision 精确匹配护栏）
+      const visionChain = await getProviderChain('vision');
+      if (visionChain.length === 0) {
+        return res.status(400).json({ message: '尚未配置视觉模型，请在 设置 → AI 模型管理 中添加 vision 模型。', traceId: t });
       }
-      const openaiKey = process.env.OPENAI_API_KEY;
-      if (!openaiKey) return res.status(500).json({ message: '识别服务未配置，请联系管理员。', traceId: t });
-      content = await callOpenAiVision({ apiKey: openaiKey, mime, base64 });
+      const routed = await callRoutedChat('vision', {
+        system: '你是账单识别引擎。请从用户提供的银行账单截图中提取交易明细，输出严格 JSON 对象，不要输出多余文本。',
+        user:
+          '请识别账单截图中的每一笔交易，输出 JSON：{ "items": [{ "date":"YYYY-MM-DD","type":"income|expense","amount":123.45,"description":string|null,"category":string|null }], "warnings":[string] }。\n' +
+          '- amount 必须为正数\n' +
+          '- type 用“收入/支出”判断\n' +
+          '- 若某行缺日期或金额则跳过，并把原因写入 warnings\n' +
+          '- description 用商户/摘要/对方信息\n' +
+          categoryRules,
+        responseFormatJson: true,
+        imageDataUrl: `data:${mime};base64,${base64}`,
+      });
+      aiProvider = routed.provider.name;
+      console.log('[api/bills/parse] ai-call', { traceId: t, provider: routed.provider.name, model: routed.provider.model, costTier: routed.provider.costTier });
+      content = routed.content;
     }
 
     const jsonText = trimJsonEnvelope(content);
@@ -298,7 +216,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       warnings.push(`分类“${cat}”不在候选分类中，已置空。`);
       return { ...it, category: null };
     });
-    return res.status(200).json({ items, warnings, traceId: t });
+    return res.status(200).json({ items, warnings, provider: aiProvider, traceId: t });
   } catch (err: any) {
     console.error('[api/bills/parse]', { traceId: t, message: err instanceof Error ? err.message : String(err) });
     return res.status(400).json({ message: toSafeMessage(err), traceId: t });

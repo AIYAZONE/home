@@ -1,5 +1,5 @@
 import { authGetUser } from '../_lib/supabaseAuthCompat.js';
-import { callOpenAiCompatChatJson } from '../_lib/aiOpenAiCompat.js';
+import { callRoutedChat } from '../ai/_lib/aiProviderRouter.js';
 import { RecommendRequestSchema } from './_lib/mealSchemas.js';
 import type { MealSlot } from './_lib/mealSchemas.js';
 import { buildConstraints } from './_lib/constraints.js';
@@ -43,9 +43,10 @@ function limit(key: string, cap: number, winMs: number): boolean {
 
 const SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner'];
 
-async function callAI(cfg: { baseUrl: string; apiKey: string; model: string }, system: string, user: string): Promise<string> {
-  const { jsonText } = await callOpenAiCompatChatJson({ ...cfg, system, user, temperature: 0.6 });
-  return jsonText;
+async function callAI(system: string, user: string, traceId: string): Promise<string> {
+  const { content, provider } = await callRoutedChat('text', { system, user, temperature: 0.6, responseFormatJson: true });
+  console.log('[api/meals/recommend] ai-call', { traceId, provider: provider.name, model: provider.model, costTier: provider.costTier });
+  return content;
 }
 
 export default async function handler(req: RequestLike, res: ResponseLike) {
@@ -109,15 +110,6 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
 
     const constraints = buildConstraints(memberInputs, { adhocIngredients, direction });
 
-    const provider = ((process.env.AI_LLM_PROVIDER ?? 'deepseek') as string).toLowerCase() === 'openai' ? 'openai' : 'deepseek';
-    const cfg = provider === 'openai'
-      ? { baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1', apiKey: process.env.OPENAI_API_KEY ?? '', model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini' }
-      : { baseUrl: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY ?? '', model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat' };
-
-    if (!cfg.apiKey) {
-      return res.status(500).json({ message: `AI 服务密钥未配置（缺少 ${provider === 'openai' ? 'OPENAI_API_KEY' : 'DEEPSEEK_API_KEY'} 环境变量）。`, traceId });
-    }
-
     const system = buildSystemPrompt(constraints);
     const userPrompt = buildUserPrompt({ c: constraints, date, mealOnly: swap?.meal, exclude: swap ? [swap.dish] : undefined });
 
@@ -126,12 +118,12 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
     let jsonText: string;
     let lastAiError = '';
     try {
-      jsonText = await callAI(cfg, system, userPrompt);
+      jsonText = await callAI(system, userPrompt, traceId);
     } catch (e1) {
       lastAiError = e1 instanceof Error ? e1.message : String(e1);
       console.error('[api/meals/recommend] ai attempt 1', { traceId, message: lastAiError });
       try {
-        jsonText = await callAI(cfg, system, userPrompt + '\n注意：请严格输出规定 JSON 结构。');
+        jsonText = await callAI(system, userPrompt + '\n注意：请严格输出规定 JSON 结构。', traceId);
       } catch (e2) {
         const m2 = e2 instanceof Error ? e2.message : String(e2);
         console.error('[api/meals/recommend] ai attempt 2', { traceId, message: m2 });
@@ -153,7 +145,7 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
         if (result.plan[slot].length > 0) continue;
         try {
           const retryUser = buildUserPrompt({ c: constraints, date, mealOnly: slot, exclude: result.removed.map((r) => r.name) });
-          const regenText = await callAI(cfg, system, retryUser);
+          const regenText = await callAI(system, retryUser, traceId);
           const extra = assembleResponse({ jsonText: regenText, constraints });
           if (extra.plan[slot].length > 0) result.plan[slot] = extra.plan[slot];
         } catch {

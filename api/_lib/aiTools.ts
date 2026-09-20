@@ -377,6 +377,7 @@ export async function pickToolId(args: {
   provider: 'deepseek' | 'openai';
   deepseek?: { apiKey: string; baseUrl: string; model: string };
   openai?: { apiKey: string; model: string };
+  callJson?: (a: { system: string; user: string; temperature: number }) => Promise<string>;
   traceId: string;
 }): Promise<{ toolId: string; confidence: number }> {
   const text = normalizeText(args.message);
@@ -399,6 +400,8 @@ export async function pickToolId(args: {
     '请根据“最少打断、生成草稿、推动完成”的原则选择最合适的工具。';
 
   const llm = async () => {
+    // 注入点：调用方（如 chat.ts）传入路由层 callJson 时优先使用，保留直调分支向后兼容
+    if (args.callJson) return await args.callJson({ system, user, temperature: 0 });
     if (args.provider === 'deepseek') {
       const ds = args.deepseek;
       if (!ds?.apiKey) throw new Error('识别服务未配置，请联系管理员。');

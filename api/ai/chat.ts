@@ -2,6 +2,7 @@ import { authGetUser } from '../_lib/supabaseAuthCompat.js';
 import { ChatRequestSchema, CopilotResponseSchema } from '../_lib/aiSchemas.js';
 import { pickToolId, runTool } from '../_lib/aiTools.js';
 import { toSafeMessage } from '../_lib/aiOpenAiCompat.js';
+import { callRoutedChat } from './_lib/aiProviderRouter.js';
 
 type RequestLike = {
   method?: string;
@@ -112,23 +113,15 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       return res.status(400).json({ message: '请求参数不合法。', traceId: t });
     }
 
-    const provider = ((process.env.AI_LLM_PROVIDER ?? 'deepseek') as string).toLowerCase() === 'openai' ? 'openai' : 'deepseek';
-    const deepseek = {
-      apiKey: process.env.DEEPSEEK_API_KEY ?? '',
-      baseUrl: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
-      model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
-    };
-    const openai = {
-      apiKey: process.env.OPENAI_API_KEY ?? '',
-      model: 'gpt-4o-mini',
-    };
-
     const { toolId, confidence } = await pickToolId({
       message: parsed.data.message,
       module: parsed.data.module,
-      provider,
-      deepseek,
-      openai,
+      provider: 'deepseek', // 兼容旧必填字段；实际调用走 callJson 注入的路由层
+      callJson: async ({ system, user, temperature }) => {
+        const { content, provider } = await callRoutedChat('text', { system, user, temperature, responseFormatJson: true });
+        console.log('[api/ai/chat] ai-call', { traceId: t, provider: provider.name, model: provider.model, costTier: provider.costTier });
+        return content;
+      },
       traceId: t,
     });
 
