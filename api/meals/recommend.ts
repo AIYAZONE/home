@@ -122,16 +122,20 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
     const userPrompt = buildUserPrompt({ c: constraints, date, mealOnly: swap?.meal, exclude: swap ? [swap.dish] : undefined });
 
     // 调 AI（失败重试一次），组装时对过敏原做服务端拦截
+    // 自用阶段：把底层错误摘要透出到 message，便于前端直接定位（不含密钥）
     let jsonText: string;
+    let lastAiError = '';
     try {
       jsonText = await callAI(cfg, system, userPrompt);
     } catch (e1) {
-      console.error('[api/meals/recommend] ai attempt 1', { traceId, message: e1 instanceof Error ? e1.message : String(e1) });
+      lastAiError = e1 instanceof Error ? e1.message : String(e1);
+      console.error('[api/meals/recommend] ai attempt 1', { traceId, message: lastAiError });
       try {
         jsonText = await callAI(cfg, system, userPrompt + '\n注意：请严格输出规定 JSON 结构。');
       } catch (e2) {
-        console.error('[api/meals/recommend] ai attempt 2', { traceId, message: e2 instanceof Error ? e2.message : String(e2) });
-        return res.status(502).json({ message: 'AI 繁忙，请稍后再试。', traceId });
+        const m2 = e2 instanceof Error ? e2.message : String(e2);
+        console.error('[api/meals/recommend] ai attempt 2', { traceId, message: m2 });
+        return res.status(502).json({ message: `AI 调用失败：${m2 || lastAiError || '未知错误'}`, traceId });
       }
     }
 
