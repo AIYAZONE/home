@@ -1,8 +1,14 @@
--- AI 模型清单（平台级）+ 平台管理员表。
--- 两张表均仅 service role 访问：RLS 开启且不建任何用户策略，家庭成员（含家庭 admin）不可直查。
+-- AI 模型清单（v2：个人级 + 平台共享池）。
+-- 两张表均仅 service role 访问：RLS 开启且不建任何用户策略，家庭成员不可直查；
+-- 所有读写经服务端管理端点，按调用者 userId 做归属隔离、按 email 白名单控制共享池写权限。
+
+-- 若曾按 v1 建过超管表，清理（v2 用 AI_SHARED_POOL_EMAILS 环境变量取代，不再有 platform_admins）。
+drop table if exists public.platform_admins;
 
 create table if not exists public.ai_providers (
   id uuid primary key default uuid_generate_v4(),
+  owner_user_id uuid references public.users(id) on delete cascade,
+    -- NULL = 平台共享默认（人人免填可用）；非空 = 该用户私有模型
   name text not null,
   base_url text not null,
   model text not null,
@@ -19,20 +25,29 @@ create table if not exists public.ai_providers (
   updated_at timestamptz not null default now()
 );
 
-create index if not exists idx_ai_providers_enabled_priority on public.ai_providers(enabled, priority asc);
+-- 归属 + 能力 + 启用 + 优先级：路由链解析与「我的/共享」列表都走它。
+create index if not exists idx_ai_providers_owner_cap on public.ai_providers(owner_user_id, capability, enabled, priority asc);
+create index if not exists idx_ai_providers_shared on public.ai_providers(capability, enabled, priority asc) where owner_user_id is null;
 
-create table if not exists public.platform_admins (
-  user_id uuid primary key references public.users(id) on delete cascade,
-  added_by uuid references public.users(id) on delete set null,
-  created_at timestamptz not null default now()
+-- 每个用户每能力的默认模型选择（可指向共享行或自己私有行）。
+create table if not exists public.user_model_prefs (
+  user_id uuid not null references public.users(id) on delete cascade,
+  capability text not null check (capability in ('text','vision')),
+  provider_id uuid not null references public.ai_providers(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, capability)
 );
 
 alter table public.ai_providers enable row level security;
-alter table public.platform_admins enable row level security;
+alter table public.user_model_prefs enable row level security;
 
 drop trigger if exists trg_ai_providers_updated_at on public.ai_providers;
 create trigger trg_ai_providers_updated_at before update on public.ai_providers
   for each row execute function public.set_updated_at();
 
--- 首位平台管理员入驻（部署后在 Supabase SQL 编辑器手动执行一次，取消注释并替换 id）：
--- insert into public.platform_admins (user_id) values ('<你的 users.id>');
+drop trigger if exists trg_user_model_prefs_updated_at on public.user_model_prefs;
+create trigger trg_user_model_prefs_updated_at before update on public.user_model_prefs
+  for each row execute function public.set_updated_at();
+
+-- v2：无 platform_admins 入驻 SQL。共享池写权限改由环境变量 AI_SHARED_POOL_EMAILS 授予（见 .env.example）。

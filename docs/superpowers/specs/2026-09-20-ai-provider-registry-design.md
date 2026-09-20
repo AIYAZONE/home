@@ -1,14 +1,17 @@
 # AI 模型清单管理（免费算力优先）— 设计稿
 
-> 日期：2026-09-20 ｜ 类型：新子系统（架构级，改造现有 AI 调用层） ｜ 状态：已批准并实施
-> 定位：把「接哪家大模型的免费额度」从代码/环境变量决策，变成**平台管理员在界面上自由增删改的数据决策**。免费 provider 优先路由、额度耗尽自动降级付费兜底，收费模型也可在界面上手动绑定。
+> 日期：2026-09-20 ｜ 类型：新子系统（架构级，改造现有 AI 调用层） ｜ 状态：实施中（v2 修订：超管→个人级）
+> 定位：把「接哪家大模型的免费额度」从代码/环境变量决策，变成**每个用户在自己界面上选择/绑定模型的数据决策**。
+>
+> **v2 修订（2026-09-20，用户纠正）**：初版把清单设计为平台级 + 超管（`platform_admins`）管理。用户明确纠正：不需要超管，**系统内每个普通用户都应能选择自己喜欢的 AI 模型（个人级），并可为自己绑定免费额度 key**。新模型 = **混合 + 个人级**：平台提供一套“免填即用”的共享默认模型（写权限由 `AI_SHARED_POOL_EMAILS` 邮箱白名单控制，非产品内超管角色）+ 每个用户自己的私有模型与默认选择。原 v1 的 `platform_admins` 表与超管守卫废弃。
 
 ## 0. 决策摘要（TL;DR）
 
 - **需求整合**：① 接入多家国内大模型的免费额度获取免费算力；② 不再用 `.env` 管理模型配置，改为 DB 驱动的「AI 模型清单」管理界面，免费/收费模型均可自由绑定。
 - **Provider 候选**：国内为主——智谱 GLM（免费 GLM-4.5-Air -flash）、阿里云百炼 Qwen（每模型量大额度）、Kimi 免费档、豆包/阶跃/腾讯混元等；全部 OpenAI 兼容，与现有 `callOpenAiCompatChatJson` 协议无缝。
 - **路由策略**：优先级列表 + 自动降级。429/5xx/超时 → 冷却 10 分钟并落到下一个；401/403 → 跳过不冷却；免费链全部耗尽 → 降级到 `cost_tier=paid` 兜底项；无可用项 → 友好提示 + traceId。
-- **归属与权限**：清单是**平台级**资源（非家庭级），仅**平台管理员**（新增 `platform_admins` 表判定）可管理；家庭内 `admin` 角色不获得任何清单权限。
+- **归属与权限（v2）**：**个人级**。每个登录用户可选择自己的默认模型（text/vision 各一）并绑定自己的私有模型/key；另有一层“平台默认”共享模型（`owner_user_id IS NULL`）人人免填可用。共享池的写权限由环境变量 `AI_SHARED_POOL_EMAILS` 邮箱白名单授予（部署者自己），**不再是 `platform_admins` 表/超管角色**。底表 RLS 仍 service-role-only，用户经服务端按身份隔离访问。
+- **降级顺序（v2）**：当前用户选的默认 → 该用户自己的其它启用模型 → 平台共享模型 → env 兜底。
 - **密钥边界**：API Key 加密存 DB（AES-256-GCM），界面**只写不读**（仅回显掩码）；唯一保留的环境变量是主密钥 `AI_PROVIDER_ENC_KEY`（密码学边界，不能也存进 DB）。
 - **观测**：仅日志记录每次调用命中的 provider / model / cost_tier / traceId；不做用量表、不做面板（YAGNI）。
 - **过渡**：DB 清单为空时回落到现有 `.env` 配置，部署不断流；录入清单后 `.env` provider 变量可清空。
@@ -38,7 +41,8 @@
 
 ### 2.1 本期做什么
 
-- 新子系统：`ai_providers` 模型清单表 + `platform_admins` 管理员表（1 个迁移）。
+- 新子系统：`ai_providers` 模型表（含 `owner_user_id`：NULL=共享 / 非空=个人）+ `user_model_prefs`（每人每能力默认选择）；`platform_admins` 废弃（v2）。
+- 共享池写权限：环境变量 `AI_SHARED_POOL_EMAILS` 邮箱白名单（取代超管角色）。
 - 运行时路由层：`api/_lib/aiProviderRouter.ts`（链解析 + 降级 + 冷却 + 缓存）。
 - 管理 API：`api/ai/providers/`（list / create / update / delete / reorder / test）。
 - 管理界面：设置 → 「AI 模型管理」（`/settings/ai-providers`），含测试连通按钮。
@@ -60,6 +64,8 @@
 
 ```
 id uuid pk default gen_random_uuid()
+owner_user_id uuid -> users(id) on delete cascade
+    -- v2：NULL = 平台共享默认（人人免填可用）；非空 = 该用户私有模型
 name text not null                     -- 展示名，如「智谱免费」「百炼-qwen-plus」
 base_url text not null                 -- OpenAI 兼容端点，如 https://open.bigmodel.cn/api/paas/v4
 model text not null                    -- 模型名，如 glm-4.5-air
@@ -77,21 +83,29 @@ tested_at timestamptz
 created_at / updated_at timestamptz    -- 复用 set_updated_at 触发器范式
 ```
 
-- 无 `family_id`：平台级全局表。
+- v2：`owner_user_id` 实现个人/共享归属；无 `family_id`（个人级而非家庭级）。
 - **RLS：开启且不建任何用户可读策略**（等同仅 service role 可访问）。前端与家庭用户永远无法直查此表；所有访问经管理 API / 路由层的服务端。
 
-### 3.2 平台管理员 `platform_admins`
+### 3.2 （v2 废弃）平台管理员表 `platform_admins` → 邮箱白名单
+
+原 v1 的 `platform_admins` 表与超管守卫已废弃。共享池（`owner_user_id IS NULL` 行）的写权限改由环境变量控制：
+```
+AI_SHARED_POOL_EMAILS=部署者邮箱[,其它邮箱]   # 逗号分隔，大小写不敏感；仅这些邮箱的用户可新增/编辑/删除共享行
+```
+- 服务端从 Bearer token 解出 userId + email，`email ∈ AI_SHARED_POOL_EMAILS` 则为“共享池可写”身份；普通用户只能管理 `owner_user_id = 自己` 的行。
+- 不设产品内超管账号/角色；部署者以普通用户身份登录即可解锁额外的“平台默认”区。
+
+### 3.3 个人默认选择 `user_model_prefs`
 
 ```
-user_id uuid pk -> users(id) on delete cascade
-added_by uuid -> users(id) on delete set null
-created_at timestamptz
+user_id uuid -> users(id) on delete cascade
+capability text check in ('text','vision')
+provider_id uuid -> ai_providers(id) on delete cascade
+updated_at timestamptz
+primary key (user_id, capability)
 ```
-
-- 同样 RLS 全关闭（service-role-only）。
-- **首位管理员入驻**：迁移文件内附注释模板，部署后在 Supabase SQL 编辑器手工执行一次
-  `INSERT INTO platform_admins (user_id) VALUES ('<你的 users.id>');`。
-- 管理员的增删本期只做 SQL 操作，界面不暴露（防误操作自锁）。
+- 记录每个用户选定的默认模型（可指向共享行或自己私有行）；路由层据此将默认置为链首。
+- RLS 同 `ai_providers`：service-role-only，经服务端按 userId 隔离读写。
 
 ## 4. 密钥加密与存储边界
 
@@ -107,18 +121,20 @@ created_at timestamptz
 ### 5.1 链解析与缓存
 
 ```ts
-getProviderChain(capability: 'text' | 'vision'): Promise<ResolvedProvider[]>
+getProviderChain(capability, userId): Promise<ResolvedProvider[]>  // v2：按用户可见范围解析
 ```
 
-- service role 查询 `ai_providers`：`enabled = true` 且 capability 精确匹配（vision 请求只命中 vision 项，避免把图片塞给纯文本模型；text 请求不命中 vision 项），按 `priority asc` 排序，逐条解密 key。
-- **进程内缓存 60s**（按 capability 各一份）：管理界面改完 ≤1 分钟全网生效；避免每次 AI 请求多一趟 DB 查询。
-- 缓存失效兜底：管理 API 写操作成功后无法跨实例清缓存，接受 60s 窗口（管理动作低频，非关键路径）。
+- service role 查询 `ai_providers`：`(owner_user_id IS NULL OR owner_user_id = userId)` 且 `enabled = true` 且 capability 精确匹配（vision 只命中 vision，text 不命中 vision），按优先级排序，逐条解密 key。
+- **链首 = 该用户在 `user_model_prefs` 选定的默认**（若仍 enabled 且能力匹配）；其余：该用户私有行→共享行，各按 `priority asc`。均不命中时回落 env。
+- **缓存**：共享行可按 capability 缓存 60s；个人行按 `userId+capability` 缓存（量小）。写操作后清本实例缓存。
 
 ### 5.2 调用与降级状态机
 
 ```ts
-callRoutedChat(capability, { system, user, temperature?, maxChars? }): Promise<{ jsonText, provider, model, costTier }>
+callRoutedChat(capability, request, { userId }): Promise<{ content, provider }>
 ```
+
+> v2：新增 `userId` 入参（由已鉴权的消费端点传入），用于解析当前用户的个人优先链（默认→个人→共享→env）。
 
 沿链依次尝试（内部复用现有 OpenAI 兼容 fetch 协议，扩展返回 usage 与原始 status）：
 
@@ -149,22 +165,26 @@ callRoutedChat(capability, { system, user, temperature?, maxChars? }): Promise<{
 
 | 端点 | 方法 | 说明 |
 |---|---|---|
-| `api/ai/providers/list.ts` | GET | 全部条目（仅掩码），管理员专用 |
-| `api/ai/providers/create.ts` | POST | 校验 name/base_url/model/apiKey/capability/cost_tier；生成掩码+加密入库；priority 缺省 = 当前 max+1 |
-| `api/ai/providers/update.ts` | PATCH | 字段级更新；apiKey 留空 = 不修改；写后清本实例缓存（其余实例 60s 缓存自然收敛） |
-| `api/ai/providers/delete.ts` | POST | 物理删除 + 本实例缓存清理（其余实例 60s 收敛）。方法用 POST 而非 DELETE，与账户删除端点及 serverless 约定一致 |
-| `api/ai/providers/reorder.ts` | POST | 接收有序 id 数组，事务重写 priority |
-| `api/ai/providers/test.ts` | POST | 对该条目发一次最小 chat 请求（"回复 ok"），回传 `{status, latencyMs, detail?}`，写 test_status/test_detail/tested_at；失败**不**污染路由冷却表 |
+| `api/ai/providers/list.ts` | GET | 当前用户可见行（`owner_user_id IS NULL OR = 自己`，仅掩码）+ `defaults`（该用户 text/vision 默认 id）+ `canManageShared`（邮箱是否在白名单） |
+| `api/ai/providers/create.ts` | POST | 校验 name/base_url/model/apiKey/capability/cost_tier；加密入库。`scope:'personal'|'shared'`（默认 personal）：personal 写 `owner_user_id=自己`；shared 需白名单邮箱，写 `owner_user_id=NULL` |
+| `api/ai/providers/update.ts` | PATCH | 字段级更新；apiKey 留空=不改。**只能改自己 owned 行；共享行需白名单邮箱**；写后清缓存 |
+| `api/ai/providers/delete.ts` | POST | 物理删除 + 清缓存。同上归属校验（方法用 POST，与账户删除端点及 serverless 约定一致） |
+| `api/ai/providers/reorder.ts` | POST | 接收有序 id 数组重写 priority；仅允许重排调用者可管理（自己 owned，或白名单下共享）的行 |
+| `api/ai/providers/test.ts` | POST | 对可见行发一次最小 chat 请求，回传 `{status, latencyMs, detail?}`；写 test_* 同受归属限制（非管理员不能写共享行测试态） |
+| `api/ai/providers/set-default.ts` | POST | **v2 新增**：`{capability, provider_id}` → 校验 provider 对该用户可见后，upsert `user_model_prefs` |
 
-统一守卫（每个端点第一段）：
+统一守卫（每个端点第一段，v2）：
 
-1. Bearer → `authGetUser`；
-2. service role 查 `platform_admins` 是否含该 `user_id`，否则 403「无权限」；
+1. Bearer → `authGetUser` 取 `userId` + `email`；无有效 token → 401（**不再查 platform_admins，不存全局 403 门控**）；
+2. 行级归属：普通用户仅能读写 `owner_user_id = 自己`；触及共享行（`owner_user_id IS NULL`）的写操作需 `email ∈ AI_SHARED_POOL_EMAILS`，否则 403；
 3. 写操作限流（每 user 60s/30 次）+ traceId + `toSafeMessage` 错误出口——与现有端点骨架一致。
 
-## 7. 管理界面：设置 → 「AI 模型管理」
+## 7. 用户界面：设置 → 「我的 AI 模型」（v2，面向所有登录用户）
 
-- **入口与守卫**：`/settings/ai-providers`；导航项仅对平台管理员渲染（新增 `useIsPlatformAdmin` hook，经 `api/ai/providers/list` 的 200/403 判定，不新增公开查询面）；路由级守卫防直达。
+- **入口**：`/settings/ai-models`（路径可沿用旧值）；导航项对**所有登录用户**可见（去掉 `adminOnly`）；不再需 `useIsPlatformAdmin`。
+- **分区**：① 「平台默认·免填即用」（`owner_user_id IS NULL` 行）——普通用户只读 + “设为我的默认”；白名单邮箱额外看到 新增/编辑/删除 + “共享区”标签。② 「我的模型」（自己 owned 行）——增删改 + 填自己 key + 设为默认 + 连通测试。
+- **当前默认**：顶部显示 text/vision 各自默认是哪台，一键切换。
+- 列表/表单/模板/异常态等交互沿用 v1（名称/base_url/model/capability/cost_tier 标签、优先级、启用、测试徽标、模板下拉、`useConfirm` 删除、空态/错误态）；区别仅在于作用域变为个人且去超管门控。
 - **列表**：名称、base_url、model、capability 标签、cost_tier 标签（免费=绿/收费=金）、优先级上移/下移按钮、启用开关、最近测试结果（✓ 1234ms / ✗ 429 / 未测试）、操作（测试/编辑/删除）。
 - **新增/编辑弹窗**：预置模板下拉加速录入——内置国内免费额度常用组合（智谱 `https://open.bigmodel.cn/api/paas/v4` + `glm-4.5-air`、百炼 `https://dashscope.aliyuncs.com/compatible-mode/v1` + `qwen-plus` 等），选模板自动填 base_url/model，名称可改；API Key 输入框（密码型，编辑时 placeholder 显示掩码并提示"留空则不修改"）。
 - **测试按钮**：行内 loading → 结果徽标（延迟 / 归一化错误），失败透出 `test_detail` 摘要。
