@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { annotateReuse, CATALOG_PROVIDER_IDS, normalizeBaseUrl, parseCatalog } from './providerDiscovery.js';
+import { annotateReuse, CATALOG_PROVIDER_IDS, normalizeBaseUrl, parseCatalog } from './providerDiscovery';
 
 const fixture = {
   zhipuai: {
