@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDown, ArrowUp, Bot, Loader2, Pencil, Plus, Star, Trash2, X, Zap } from 'lucide-react';
+import { ArrowDown, ArrowUp, Bot, ChevronDown, ChevronRight, Loader2, Pencil, Plus, Sparkles, Star, Trash2, X, Zap } from 'lucide-react';
 import { useAiProviders } from '@/hooks/useAiProviders';
-import { ApiError, type ProviderDraft, type PublicProvider } from '@/lib/aiProviders';
+import { useDiscoverFreeModels } from '@/hooks/useDiscoverFreeModels';
+import { ApiError, type DiscoveredSuggestion, type ProviderDraft, type PublicProvider } from '@/lib/aiProviders';
 import { useToastStore } from '@/stores/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { cn } from '@/lib/utils';
@@ -192,6 +193,32 @@ export default function SettingsAiProviders() {
     );
   };
 
+  // 免费模型发现（spec 2026-09-21 §5）：折叠区展开才请求；启用走 create 的 reuse_key_from 服务端复制密文
+  const [discoverOpen, setDiscoverOpen] = useState(false);
+  const discover = useDiscoverFreeModels(discoverOpen);
+  const [enabling, setEnabling] = useState<DiscoveredSuggestion | null>(null);
+  const [enableName, setEnableName] = useState('');
+  const [enableScope, setEnableScope] = useState<'personal' | 'shared'>('personal');
+
+  const openEnable = (s: DiscoveredSuggestion) => { setEnabling(s); setEnableName(s.name); setEnableScope('personal'); };
+  const closeEnable = () => setEnabling(null);
+  const submitEnable = async () => {
+    if (!enabling) return;
+    try {
+      await create.mutateAsync({
+        name: enableName.trim() || enabling.name, base_url: enabling.base_url, model: enabling.model_id,
+        reuse_key_from: enabling.reuse_provider_id ?? undefined,
+        capability: enabling.capability, cost_tier: 'free', scope: enableScope,
+      });
+      pushToast({ variant: 'success', title: '已启用', message: `${enableName || enabling.name}（复用了同厂商密钥）` });
+      closeEnable();
+    } catch (err) { fail('启用失败')(err); }
+  };
+  const openPrefillAdd = (s: DiscoveredSuggestion) => {
+    setForm({ ...EMPTY_FORM, name: s.name, base_url: s.base_url, model: s.model_id, capability: s.capability, cost_tier: 'free', scope: 'personal' });
+    setEditing('new');
+  };
+
   return (
     <Page>
       {dialog}
@@ -269,6 +296,64 @@ export default function SettingsAiProviders() {
                 </div>
               )}
             </CardContent>
+          </Card>
+
+          <Card>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 px-6 py-4 text-left"
+              onClick={() => setDiscoverOpen((v) => !v)}
+              aria-expanded={discoverOpen}
+            >
+              <span className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">发现免费模型</span>
+                <span className="text-xs text-muted-foreground">来自 models.dev 开放目录，零单价模型</span>
+              </span>
+              {discoverOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            </button>
+            {discoverOpen ? (
+              <CardContent className="pt-0">
+                {discover.isLoading ? (
+                  <div className="py-6 text-center text-sm text-muted-foreground">正在拉取目录…</div>
+                ) : discover.isError ? (
+                  <div className="flex flex-col items-center gap-3 py-6 text-center">
+                    <div className="text-sm text-muted-foreground">{errText(discover.error).message}（{errText(discover.error).traceId ?? '无 traceId'}）</div>
+                    <Button size="sm" variant="secondary" onClick={() => discover.refetch()}>重试</Button>
+                  </div>
+                ) : (discover.data?.models.length ?? 0) === 0 ? (
+                  <div className="py-6 text-center text-sm text-muted-foreground">暂无可发现的免费模型。</div>
+                ) : (
+                  <div className="divide-y divide-border rounded-xl border border-border">
+                    {discover.data!.models.map((s) => (
+                      <ListRow key={`${s.provider_id}/${s.model_id}`}>
+                        <ListRowLeading>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-sm font-medium">{s.name}</span>
+                              <Badge>{s.capability === 'vision' ? '视觉' : '文本'}</Badge>
+                              {s.key_reusable ? <Badge variant="success">可复用密钥：{s.reuse_provider_name}</Badge> : null}
+                              {s.supports_reasoning ? <Badge>推理</Badge> : null}
+                            </div>
+                            <div className="truncate text-xs text-muted-foreground">
+                              {s.provider_label} · {s.model_id}
+                              {s.context_window ? ` · 上下文 ${(s.context_window / 1000).toFixed(0)}k` : ''}
+                            </div>
+                          </div>
+                        </ListRowLeading>
+                        <ListRowTrailing className="sm:justify-end">
+                          {s.key_reusable ? (
+                            <Button variant="secondary" size="sm" onClick={() => openEnable(s)} disabled={create.isPending}>启用</Button>
+                          ) : (
+                            <Button variant="ghost" size="sm" onClick={() => openPrefillAdd(s)}>添加</Button>
+                          )}
+                        </ListRowTrailing>
+                      </ListRow>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            ) : null}
           </Card>
         </>
       )}
@@ -368,6 +453,42 @@ export default function SettingsAiProviders() {
                 保存
               </Button>
             </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {enabling
+        ? createPortal(
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm" onClick={closeEnable} role="dialog" aria-modal="true">
+              <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <Card className="border border-border/60 bg-popover shadow-lg">
+                  <CardHeader className="pb-3">
+                    <CardTitle>启用「{enabling.name}」</CardTitle>
+                    <CardDescription>将复用「{enabling.reuse_provider_name}」的密钥（服务端复制密文，不展示明文）。</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-foreground">名称</label>
+                      <Input value={enableName} onChange={(e) => setEnableName(e.target.value)} maxLength={40} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-foreground">归属</label>
+                      <Select value={enableScope} onChange={(e) => setEnableScope(e.target.value as 'personal' | 'shared')}>
+                        <option value="personal">我的私有模型（仅我可见）</option>
+                        {canManageShared ? <option value="shared">平台共享模型（所有人可见）</option> : null}
+                      </Select>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="secondary" onClick={closeEnable}>取消</Button>
+                      <Button disabled={create.isPending} onClick={submitEnable}>
+                        {create.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                        确认启用
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
