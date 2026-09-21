@@ -21,10 +21,20 @@ const routes: Record<string, (req: any, res: any) => Promise<void>> = {
   discover: discoverHandler,
 };
 
+// 从 req.query.action 取动作；部分 Vercel 运行时不会把 catch-all splat 填充到
+// req.query，导致单段路径（如 /api/ai/providers/list）解析为空而误 404。
+// 8 个模型管理动作均为单段，故对 req.url 做兜底解析。
+function resolveAction(req: any): string {
+  const q = req?.query?.action;
+  if (Array.isArray(q) && q.length) return q.join('/');
+  if (typeof q === 'string' && q) return q;
+  const path = String(req?.url || req?.originalUrl || '').split('?')[0];
+  const m = path.match(/\/api\/ai\/providers\/(.+?)\/?$/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
 export default async function handler(req: any, res: any) {
-  const action = Array.isArray(req.query?.action)
-    ? req.query.action.join('/')
-    : String(req.query?.action ?? '');
+  const action = resolveAction(req);
   const route = routes[action];
   if (!route) {
     return res.status(404).json({ message: '未知的模型管理操作。' });
