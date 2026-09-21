@@ -16,7 +16,7 @@ import { Select } from '@/components/ui/select';
 
 const PROVIDER_TEMPLATES = [
   { label: '智谱 GLM（免费）', base_url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.5-air', capability: 'text', cost_tier: 'free' },
-  { label: '阿里云百炼 Qwen（免费）', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', capability: 'text', cost_tier: 'free' },
+  { label: '阿里云百炼 Qwen（免费）', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen3.8-flash', capability: 'text', cost_tier: 'free' },
   { label: 'Kimi（免费）', base_url: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k', capability: 'text', cost_tier: 'free' },
   { label: '火山方舟 豆包（免费）', base_url: 'https://ark.cn-beijing.volces.com/api/v3', model: '', capability: 'text', cost_tier: 'free' },
   { label: 'DeepSeek（付费）', base_url: 'https://api.deepseek.com', model: 'deepseek-chat', capability: 'text', cost_tier: 'paid' },
