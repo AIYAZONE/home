@@ -93,6 +93,7 @@ const localAiProvidersPlugins = [
   localApiPlugin('local-ai-providers-reorder', '/api/ai/providers/reorder', async () => (await import('./api/ai/_lib/providers/reorder')).default, providersFallback, ['POST']),
   localApiPlugin('local-ai-providers-test', '/api/ai/providers/test', async () => (await import('./api/ai/_lib/providers/test')).default, providersFallback, ['POST']),
   localApiPlugin('local-ai-providers-set-default', '/api/ai/providers/set-default', async () => (await import('./api/ai/_lib/providers/set-default')).default, providersFallback, ['POST']),
+  localApiPlugin('local-ai-providers-discover', '/api/ai/providers/discover', async () => (await import('./api/ai/_lib/providers/discover')).default, providersFallback, ['GET']),
 ];
 
 // https://vite.dev/config/

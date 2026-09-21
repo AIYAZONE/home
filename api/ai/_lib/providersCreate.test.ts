@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const insert = vi.fn();
 const maybeSingle = vi.fn();
+const orCalls: string[] = [];
 const clientChain: Record<string, any> = {};
 function makeChain(target: Record<string, any>) {
   const chain: any = new Proxy({}, {
@@ -9,6 +10,7 @@ function makeChain(target: Record<string, any>) {
       if (k === 'maybeSingle') return maybeSingle;
       // 真实链路是 .insert(payload).select('*').single()——select 在 single 之前
       if (k === 'insert') return (payload: any) => { target.insertPayload = payload; return { select: () => ({ single: insert }) }; };
+      if (k === 'or') return (filter: string) => { orCalls.push(filter); return chain; };
       return (..._a: any[]) => chain;
     },
   });
@@ -37,7 +39,7 @@ function makeRes(): Res & { status: (n: number) => any; setHeader: (k: string, v
 }
 
 beforeEach(() => {
-  insert.mockReset(); maybeSingle.mockReset(); delete clientChain.insertPayload;
+  insert.mockReset(); maybeSingle.mockReset(); delete clientChain.insertPayload; orCalls.length = 0;
   // priority 查询（create.ts L20-22）也走 maybeSingle——默认给空行，避免解构 undefined 抛错；
   // reuse 分支用例再覆盖此默认值
   maybeSingle.mockResolvedValue({ data: null, error: null });
@@ -53,6 +55,9 @@ describe('create reuse_key_from（spec 2026-09-21 §4.3）', () => {
     await createHandler({ method: 'POST', headers: {}, body: { name: '智谱新免费', base_url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.7-flash', capability: 'text', cost_tier: 'free', reuse_key_from: '11111111-1111-4111-a111-111111111111' } }, res);
     expect(res.code).toBe(200);
     expect(clientChain.insertPayload).toMatchObject({ api_key_encrypted: 'iv:cipher-SRC', api_key_mask: 'sk-***src' });
+    // 可见域回归锁（评审 M1）：误删 .or 即跨用户密钥窃取，此断言必须红
+    expect(orCalls).toEqual([expect.stringContaining('owner_user_id.is.null')]);
+    expect(orCalls[0]).toContain('owner_user_id.eq.u1');
   });
   it('引用查不到（含他人私有行，查询已限可见域）→ 400 防探测文案', async () => {
     maybeSingle.mockResolvedValue({ data: null, error: null });
@@ -69,5 +74,6 @@ describe('create reuse_key_from（spec 2026-09-21 §4.3）', () => {
     expect(res.code).toBe(200);
     expect(clientChain.insertPayload.api_key_mask).toContain('sk-');
     expect(clientChain.insertPayload.api_key_encrypted).not.toBe('sk-plain'); // 入库必须密文
+    expect(orCalls).toEqual([]); // 明文路径不触发 reuse 查询
   });
 });
