@@ -716,6 +716,12 @@ git commit -m "feat(ai): 前端发现层——discover API 类型与 useDiscover
   };
 ```
 
+**（终审补记，计划原稿遗漏项）** `src/hooks/useAiProviders.ts`：spec §5.2 要求启用后
+「invalidate 列表与发现区」。create/remove 的 `onSuccess` 改用
+`invalidateWithDiscover`（在 `invalidate()` 基础上追加
+`qc.invalidateQueries({ queryKey: ['ai-providers-discover', userId] })`）；
+读类 mutation 不挂（行集未变，避免无谓重拉 4.7MB 目录）。
+
 平台共享池 `</Card>` 之后（`</>` 收尾前）加折叠区 JSX：
 
 ```tsx

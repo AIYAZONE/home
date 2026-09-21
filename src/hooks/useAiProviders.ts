@@ -17,9 +17,15 @@ export function useAiProviders() {
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['ai-providers', userId] });
-  const create = useMutation({ mutationFn: (draft: ProviderDraft) => providersApi.create(draft), onSuccess: invalidate });
+  // 行集变化会使发现区「可复用密钥」比对与已启用状态过期（spec §5.2）；仅 create/remove 挂，
+  // 读类 mutation（test/setDefault…）不动行集，避免无谓重拉 4.7MB 目录
+  const invalidateWithDiscover = () => {
+    invalidate();
+    qc.invalidateQueries({ queryKey: ['ai-providers-discover', userId] });
+  };
+  const create = useMutation({ mutationFn: (draft: ProviderDraft) => providersApi.create(draft), onSuccess: invalidateWithDiscover });
   const update = useMutation({ mutationFn: ({ id, patch }: { id: string; patch: Partial<ProviderDraft> }) => providersApi.update(id, patch), onSuccess: invalidate });
-  const remove = useMutation({ mutationFn: (id: string) => providersApi.remove(id), onSuccess: invalidate });
+  const remove = useMutation({ mutationFn: (id: string) => providersApi.remove(id), onSuccess: invalidateWithDiscover });
   const reorder = useMutation({ mutationFn: (ids: string[]) => providersApi.reorder(ids), onSuccess: invalidate });
   const test = useMutation({ mutationFn: (id: string) => providersApi.test(id), onSuccess: invalidate });
   const setDefault = useMutation({
