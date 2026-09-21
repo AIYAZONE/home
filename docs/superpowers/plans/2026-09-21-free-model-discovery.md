@@ -159,7 +159,7 @@ const CatalogModelSchema = z.object({
 const CatalogProviderSchema = z.object({
   name: z.string().min(1),
   api: z.union([z.string().url(), z.object({ url: z.string().url() })]).optional(),
-  models: z.record(z.unknown()),
+  models: z.record(z.string(), z.unknown()),
 });
 
 export type DiscoveredModel = {
