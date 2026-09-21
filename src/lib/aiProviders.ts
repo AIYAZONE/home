@@ -10,11 +10,19 @@ export type PublicProvider = {
 
 export type ProviderDraft = {
   name: string; base_url: string; model: string; api_key?: string;
+  reuse_key_from?: string; // 免费模型发现：服务端复制该行密文（与 api_key 二选一）
   capability: 'text' | 'vision'; cost_tier: 'free' | 'paid'; enabled?: boolean;
   scope?: 'personal' | 'shared'; // v2：shared 仅邮箱白名单用户可提
 };
 
 export type ProviderDefaults = { text: string | null; vision: string | null };
+
+export type DiscoveredSuggestion = {
+  provider_id: string; provider_label: string; model_id: string; name: string;
+  base_url: string; capability: 'text' | 'vision';
+  context_window: number | null; supports_reasoning: boolean;
+  key_reusable: boolean; reuse_provider_id: string | null; reuse_provider_name: string | null;
+};
 
 export class ApiError extends Error {
   status: number;
@@ -41,6 +49,8 @@ async function request<T>(path: string, method: string, body?: unknown): Promise
 export const providersApi = {
   list: () =>
     request<{ providers: PublicProvider[]; defaults: ProviderDefaults; canManageShared: boolean }>('ai/providers/list', 'GET'),
+  discover: () =>
+    request<{ models: DiscoveredSuggestion[]; fetched_at: string }>('ai/providers/discover', 'GET'),
   create: (draft: ProviderDraft) => request<{ provider: PublicProvider }>('ai/providers/create', 'POST', draft),
   update: (id: string, patch: Partial<ProviderDraft>) => request<{ provider: PublicProvider }>('ai/providers/update', 'PATCH', { id, patch }),
   remove: (id: string) => request<{ ok: true }>('ai/providers/delete', 'POST', { id }),
