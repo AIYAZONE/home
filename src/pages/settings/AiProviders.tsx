@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, Bot, Loader2, Pencil, Plus, Star, Trash2, Zap } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowDown, ArrowUp, Bot, Loader2, Pencil, Plus, Star, Trash2, X, Zap } from 'lucide-react';
 import { useAiProviders } from '@/hooks/useAiProviders';
 import { ApiError, type ProviderDraft, type PublicProvider } from '@/lib/aiProviders';
 import { useToastStore } from '@/stores/toast';
@@ -272,17 +273,32 @@ export default function SettingsAiProviders() {
         </>
       )}
 
-      {editing ? (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle>{editing === 'new' ? (form.scope === 'shared' ? '新增共享模型' : '新增模型') : '编辑模型'}</CardTitle>
-            <CardDescription>
-              {editing === 'new'
-                ? (form.scope === 'shared' ? '共享模型对全部用户可见可选，请确认密钥合规。' : '选择模板可快速填入常用国内免费额度端点。')
-                : `密钥留空则保持原值不变（当前 ${editing.api_key_mask}）。`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      {editing
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+              onClick={closeForm}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+                <Card className="border border-border/60 bg-popover shadow-lg">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <CardTitle>{editing === 'new' ? (form.scope === 'shared' ? '新增共享模型' : '新增模型') : '编辑模型'}</CardTitle>
+                        <CardDescription>
+                          {editing === 'new'
+                            ? (form.scope === 'shared' ? '共享模型对全部用户可见可选，请确认密钥合规。' : '选择模板可快速填入常用国内免费额度端点。')
+                            : `密钥留空则保持原值不变（当前 ${editing.api_key_mask}）。`}
+                        </CardDescription>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={closeForm} aria-label="关闭">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="max-h-[70vh] space-y-4 overflow-y-auto">
             {editing === 'new' ? (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">模板</label>
@@ -352,9 +368,13 @@ export default function SettingsAiProviders() {
                 保存
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      ) : null}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </Page>
   );
 }
