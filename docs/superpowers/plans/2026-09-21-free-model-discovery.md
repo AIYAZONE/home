@@ -100,7 +100,12 @@ describe('normalizeBaseUrl', () => {
   it('尾斜杠/大小写 host/默认端口无关，路径大小写保留', () => {
     expect(normalizeBaseUrl('https://Open.BigModel.cn/api/paas/v4/')).toBe('https://open.bigmodel.cn/api/paas/v4');
     expect(normalizeBaseUrl('http://x.test:80/v1')).toBe('http://x.test/v1');
+    expect(normalizeBaseUrl('https://x.test:443/v1')).toBe('https://x.test/v1');
     expect(normalizeBaseUrl('不是 URL')).toBe('');
+  });
+  it('非默认端口必须保留，不同主机不得折叠为同一 key（Task 1 评审修复新增）', () => {
+    expect(normalizeBaseUrl('http://192.168.1.5:8000/v1/')).toBe('http://192.168.1.5:8000/v1');
+    expect(normalizeBaseUrl('http://x.test:8080/v1')).not.toBe(normalizeBaseUrl('http://x.test80/v1'));
   });
 });
 
@@ -175,8 +180,9 @@ export type DiscoveredSuggestion = DiscoveredModel & {
 export function normalizeBaseUrl(u: string): string {
   try {
     const url = new URL(u);
-    const defaultPort = url.protocol === 'https:' ? ':443' : ':80';
-    const host = url.host.replace(defaultPort, '').toLowerCase();
+    // WHATWG URL 已自动剥离默认端口（:443/:80）；非默认端口必须保留，
+    // 否则不同主机会折叠成同一 key，导致跨主机复用 api_key（Task 1 评审修复）
+    const host = url.host.toLowerCase();
     const path = url.pathname.replace(/\/+$/, '');
     return `${url.protocol.toLowerCase()}//${host}${path}`;
   } catch {

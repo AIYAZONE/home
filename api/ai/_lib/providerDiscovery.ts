@@ -40,8 +40,9 @@ export type DiscoveredSuggestion = DiscoveredModel & {
 export function normalizeBaseUrl(u: string): string {
   try {
     const url = new URL(u);
-    const defaultPort = url.protocol === 'https:' ? ':443' : ':80';
-    const host = url.host.replace(defaultPort, '').toLowerCase();
+    // WHATWG URL 已自动剥离默认端口（:443/:80）；非默认端口必须保留，
+    // 否则不同主机会折叠成同一 key，导致跨主机复用 api_key（Task 1 评审修复）
+    const host = url.host.toLowerCase();
     const path = url.pathname.replace(/\/+$/, '');
     return `${url.protocol.toLowerCase()}//${host}${path}`;
   } catch {

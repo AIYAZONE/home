@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { annotateReuse, normalizeBaseUrl, parseCatalog } from './providerDiscovery.js';
+import { annotateReuse, CATALOG_PROVIDER_IDS, normalizeBaseUrl, parseCatalog } from './providerDiscovery.js';
 
 const fixture = {
   zhipuai: {
@@ -55,7 +55,22 @@ describe('normalizeBaseUrl', () => {
   it('尾斜杠/大小写 host/默认端口无关，路径大小写保留', () => {
     expect(normalizeBaseUrl('https://Open.BigModel.cn/api/paas/v4/')).toBe('https://open.bigmodel.cn/api/paas/v4');
     expect(normalizeBaseUrl('http://x.test:80/v1')).toBe('http://x.test/v1');
+    expect(normalizeBaseUrl('https://x.test:443/v1')).toBe('https://x.test/v1');
     expect(normalizeBaseUrl('不是 URL')).toBe('');
+  });
+  it('非默认端口必须保留，不同主机不得折叠为同一 key（密钥复用比对路径）', () => {
+    expect(normalizeBaseUrl('http://192.168.1.5:8000/v1/')).toBe('http://192.168.1.5:8000/v1');
+    expect(normalizeBaseUrl('http://x.test:8080/v1')).not.toBe(normalizeBaseUrl('http://x.test80/v1'));
+  });
+});
+
+describe('常量与边界', () => {
+  it('白名单冻结为 spec §8 决策 5 的 11 项', () => {
+    expect(CATALOG_PROVIDER_IDS).toHaveLength(11);
+  });
+  it('超长 name 截断至 40（对齐 ai_providers.name 列上限）', () => {
+    const out = parseCatalog({ zhipuai: { name: 'Z', api: 'https://x.test/v4', models: { m: { id: 'm', name: 'N'.repeat(60), cost: { input: 0, output: 0 } } } } });
+    expect(out[0]?.name).toHaveLength(40);
   });
 });
 
