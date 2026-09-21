@@ -81,17 +81,18 @@ const localMembersApiPlugin = () =>
   localApiPlugin('local-members-api', '/api/members/create', async () => (await import('./api/members/create')).default, '请求失败，请稍后再试。');
 
 // 模型管理端点：按 REST 语义分别声明方法白名单（list=GET、update=PATCH、其余 POST）。
+// 实现文件在 api/ai/_lib/providers/（Vercel 侧由 catch-all [...action].ts 统一分发，此处保持逐端点挂载）。
 // 注意：vite.config 会被 esbuild 预打包，动态 import 的模板字面量路径无法被解析（会抛 Module not found in bundle），
 // 故沿用既有“静态字面量 import”写法。
 const providersFallback = '模型管理操作失败，请稍后再试。';
 const localAiProvidersPlugins = [
-  localApiPlugin('local-ai-providers-list', '/api/ai/providers/list', async () => (await import('./api/ai/providers/list')).default, providersFallback, ['GET']),
-  localApiPlugin('local-ai-providers-create', '/api/ai/providers/create', async () => (await import('./api/ai/providers/create')).default, providersFallback, ['POST']),
-  localApiPlugin('local-ai-providers-update', '/api/ai/providers/update', async () => (await import('./api/ai/providers/update')).default, providersFallback, ['PATCH']),
-  localApiPlugin('local-ai-providers-delete', '/api/ai/providers/delete', async () => (await import('./api/ai/providers/delete')).default, providersFallback, ['POST']),
-  localApiPlugin('local-ai-providers-reorder', '/api/ai/providers/reorder', async () => (await import('./api/ai/providers/reorder')).default, providersFallback, ['POST']),
-  localApiPlugin('local-ai-providers-test', '/api/ai/providers/test', async () => (await import('./api/ai/providers/test')).default, providersFallback, ['POST']),
-  localApiPlugin('local-ai-providers-set-default', '/api/ai/providers/set-default', async () => (await import('./api/ai/providers/set-default')).default, providersFallback, ['POST']),
+  localApiPlugin('local-ai-providers-list', '/api/ai/providers/list', async () => (await import('./api/ai/_lib/providers/list')).default, providersFallback, ['GET']),
+  localApiPlugin('local-ai-providers-create', '/api/ai/providers/create', async () => (await import('./api/ai/_lib/providers/create')).default, providersFallback, ['POST']),
+  localApiPlugin('local-ai-providers-update', '/api/ai/providers/update', async () => (await import('./api/ai/_lib/providers/update')).default, providersFallback, ['PATCH']),
+  localApiPlugin('local-ai-providers-delete', '/api/ai/providers/delete', async () => (await import('./api/ai/_lib/providers/delete')).default, providersFallback, ['POST']),
+  localApiPlugin('local-ai-providers-reorder', '/api/ai/providers/reorder', async () => (await import('./api/ai/_lib/providers/reorder')).default, providersFallback, ['POST']),
+  localApiPlugin('local-ai-providers-test', '/api/ai/providers/test', async () => (await import('./api/ai/_lib/providers/test')).default, providersFallback, ['POST']),
+  localApiPlugin('local-ai-providers-set-default', '/api/ai/providers/set-default', async () => (await import('./api/ai/_lib/providers/set-default')).default, providersFallback, ['POST']),
 ];
 
 // https://vite.dev/config/

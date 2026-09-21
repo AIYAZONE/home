@@ -1,8 +1,8 @@
-import { encryptApiKey, maskApiKey } from '../_lib/providerSecret.js';
-import { clearInstanceCache } from '../_lib/aiProviderRouter.js';
-import { adminClient, skeleton } from '../_lib/endpointKit.js';
-import { isSharedPoolAdmin } from '../_lib/adminGuard.js';
-import { ProviderCreateSchema, toPublicRow } from '../_lib/providersSchema.js';
+import { encryptApiKey, maskApiKey } from '../providerSecret.js';
+import { clearInstanceCache } from '../aiProviderRouter.js';
+import { adminClient, skeleton } from '../endpointKit.js';
+import { isSharedPoolAdmin } from '../adminGuard.js';
+import { ProviderCreateSchema, toPublicRow } from '../providersSchema.js';
 
 export default async function handler(req: any, res: any) {
   await skeleton('ai.providers.create', req, res, { method: 'POST', write: true }, async (ctx, t) => {

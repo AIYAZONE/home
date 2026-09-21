@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { AiUpstreamError, callLow } from '../../_lib/aiOpenAiCompat.js';
-import { canManageRow, canViewRow } from '../_lib/adminGuard.js';
-import { decryptApiKey, ProviderSecretError } from '../_lib/providerSecret.js';
-import { adminClient, skeleton } from '../_lib/endpointKit.js';
+import { AiUpstreamError, callLow } from '../../../_lib/aiOpenAiCompat.js';
+import { canManageRow, canViewRow } from '../adminGuard.js';
+import { decryptApiKey, ProviderSecretError } from '../providerSecret.js';
+import { adminClient, skeleton } from '../endpointKit.js';
 
 const TEST_TIMEOUT_MS = 15_000;
 

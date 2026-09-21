@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { clearInstanceCache } from '../_lib/aiProviderRouter.js';
-import { decideManage } from '../_lib/adminGuard.js';
-import { adminClient, skeleton } from '../_lib/endpointKit.js';
+import { clearInstanceCache } from '../aiProviderRouter.js';
+import { decideManage } from '../adminGuard.js';
+import { adminClient, skeleton } from '../endpointKit.js';
 
 export default async function handler(req: any, res: any) {
   await skeleton('ai.providers.delete', req, res, { method: 'POST', write: true }, async (ctx, t) => {

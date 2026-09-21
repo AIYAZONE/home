@@ -1,6 +1,6 @@
-import { adminClient, skeleton } from '../_lib/endpointKit.js';
-import { isSharedPoolAdmin } from '../_lib/adminGuard.js';
-import { toPublicRow, type AdminRow } from '../_lib/providersSchema.js';
+import { adminClient, skeleton } from '../endpointKit.js';
+import { isSharedPoolAdmin } from '../adminGuard.js';
+import { toPublicRow, type AdminRow } from '../providersSchema.js';
 
 export default async function handler(req: any, res: any) {
   await skeleton('ai.providers.list', req, res, { method: 'GET' }, async (ctx, t) => {

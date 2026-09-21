@@ -1,7 +1,7 @@
-import { clearInstanceCache } from '../_lib/aiProviderRouter.js';
-import { canViewRow } from '../_lib/adminGuard.js';
-import { SetDefaultSchema } from '../_lib/providersSchema.js';
-import { adminClient, skeleton } from '../_lib/endpointKit.js';
+import { clearInstanceCache } from '../aiProviderRouter.js';
+import { canViewRow } from '../adminGuard.js';
+import { SetDefaultSchema } from '../providersSchema.js';
+import { adminClient, skeleton } from '../endpointKit.js';
 
 export default async function handler(req: any, res: any) {
   await skeleton('ai.providers.setdefault', req, res, { method: 'POST', write: true }, async (ctx, t) => {

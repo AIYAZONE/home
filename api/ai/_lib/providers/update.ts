@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { encryptApiKey, maskApiKey } from '../_lib/providerSecret.js';
-import { clearInstanceCache } from '../_lib/aiProviderRouter.js';
-import { adminClient, skeleton } from '../_lib/endpointKit.js';
-import { decideManage } from '../_lib/adminGuard.js';
-import { ProviderPatchSchema, toPublicRow, type AdminRow } from '../_lib/providersSchema.js';
+import { encryptApiKey, maskApiKey } from '../providerSecret.js';
+import { clearInstanceCache } from '../aiProviderRouter.js';
+import { adminClient, skeleton } from '../endpointKit.js';
+import { decideManage } from '../adminGuard.js';
+import { ProviderPatchSchema, toPublicRow, type AdminRow } from '../providersSchema.js';
 
 export default async function handler(req: any, res: any) {
   await skeleton('ai.providers.update', req, res, { method: 'PATCH', write: true }, async (ctx, t) => {
