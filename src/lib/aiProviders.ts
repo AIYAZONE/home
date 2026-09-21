@@ -10,7 +10,7 @@ export type PublicProvider = {
 
 export type ProviderDraft = {
   name: string; base_url: string; model: string; api_key?: string;
-  reuse_key_from?: string; // 免费模型发现：服务端复制该行密文（与 api_key 二选一）
+  reuse_key_from?: string; // 仅 create 有效（服务端复制该行密文，与 api_key 二选一）；update patch 不接收此字段
   capability: 'text' | 'vision'; cost_tier: 'free' | 'paid'; enabled?: boolean;
   scope?: 'personal' | 'shared'; // v2：shared 仅邮箱白名单用户可提
 };
