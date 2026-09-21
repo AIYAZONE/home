@@ -32,6 +32,7 @@ export default async function handler(req: any, res: any) {
         .or(`owner_user_id.is.null,owner_user_id.eq.${ctx.userId}`)
         .maybeSingle();
       if (srcErr || !src) {
+        if (srcErr) console.error('[api/ai.providers.create]', { traceId: t, db: srcErr.message }); // 对外仍是防探测 400
         return res.status(400).json({ message: '引用的模型不存在或已被删除，请刷新后重试。', traceId: t });
       }
       keyMaterial = { api_key_encrypted: src.api_key_encrypted, api_key_mask: src.api_key_mask };
