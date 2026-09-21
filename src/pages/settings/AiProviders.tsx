@@ -204,13 +204,14 @@ export default function SettingsAiProviders() {
   const closeEnable = () => setEnabling(null);
   const submitEnable = async () => {
     if (!enabling) return;
+    const name = enableName.trim() || enabling.name; // 与入库值一致（纯空格回退目录名）
     try {
       await create.mutateAsync({
-        name: enableName.trim() || enabling.name, base_url: enabling.base_url, model: enabling.model_id,
+        name, base_url: enabling.base_url, model: enabling.model_id,
         reuse_key_from: enabling.reuse_provider_id ?? undefined,
         capability: enabling.capability, cost_tier: 'free', scope: enableScope,
       });
-      pushToast({ variant: 'success', title: '已启用', message: `${enableName || enabling.name}（复用了同厂商密钥）` });
+      pushToast({ variant: 'success', title: '已启用', message: `${name}（复用了同厂商密钥）` });
       closeEnable();
     } catch (err) { fail('启用失败')(err); }
   };
