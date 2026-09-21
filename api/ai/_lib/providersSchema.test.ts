@@ -44,6 +44,14 @@ describe('ProviderCreateSchema（v2 scope）', () => {
     expect(ProviderCreateSchema.safeParse({ ...base, scope: 'family' }).success).toBe(false);
     expect(ProviderCreateSchema.safeParse({ ...base, scope: 'shared' }).success).toBe(true);
   });
+
+  it('api_key 与 reuse_key_from 二选一（免费模型发现 spec §4.3）', () => {
+    const noKey = { name: 'n', base_url: 'https://x.test/v4', model: 'm', capability: 'text', cost_tier: 'free' };
+    expect(ProviderCreateSchema.safeParse(noKey).success).toBe(false);
+    expect(ProviderCreateSchema.safeParse({ ...noKey, api_key: 'sk-a', reuse_key_from: '11111111-1111-4111-a111-111111111111' }).success).toBe(false);
+    expect(ProviderCreateSchema.safeParse({ ...noKey, reuse_key_from: '11111111-1111-4111-a111-111111111111' }).success).toBe(true);
+    expect(ProviderCreateSchema.safeParse({ ...noKey, reuse_key_from: 'not-a-uuid' }).success).toBe(false);
+  });
 });
 
 describe('SetDefaultSchema', () => {

@@ -22,11 +22,26 @@ export default async function handler(req: any, res: any) {
       const { data: maxRow } = await q.maybeSingle();
       priority = Number(maxRow?.priority ?? 0) + 1;
     }
+    let keyMaterial: { api_key_encrypted: string; api_key_mask: string };
+    if (parsed.data.reuse_key_from) {
+      // 可见域查询（共享行 + 自己私有行）——查不到统一 400，防探测（gone 语义）
+      const { data: src, error: srcErr } = await client
+        .from('ai_providers')
+        .select('api_key_encrypted,api_key_mask')
+        .eq('id', parsed.data.reuse_key_from)
+        .or(`owner_user_id.is.null,owner_user_id.eq.${ctx.userId}`)
+        .maybeSingle();
+      if (srcErr || !src) {
+        return res.status(400).json({ message: '引用的模型不存在或已被删除，请刷新后重试。', traceId: t });
+      }
+      keyMaterial = { api_key_encrypted: src.api_key_encrypted, api_key_mask: src.api_key_mask };
+    } else {
+      keyMaterial = { api_key_encrypted: encryptApiKey(parsed.data.api_key!), api_key_mask: maskApiKey(parsed.data.api_key!) };
+    }
     const payload = {
       owner_user_id: ownerUserId,
       name: parsed.data.name, base_url: parsed.data.base_url, model: parsed.data.model,
-      api_key_encrypted: encryptApiKey(parsed.data.api_key),
-      api_key_mask: maskApiKey(parsed.data.api_key),
+      ...keyMaterial,
       capability: parsed.data.capability, cost_tier: parsed.data.cost_tier,
       priority, enabled: parsed.data.enabled,
     };

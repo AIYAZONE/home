@@ -4,12 +4,16 @@ export const ProviderCreateSchema = z.object({
   name: z.string().trim().min(1).max(40),
   base_url: z.string().trim().url(),
   model: z.string().trim().min(1).max(80),
-  api_key: z.string().trim().min(1).max(300),
+  api_key: z.string().trim().min(1).max(300).optional(),
+  reuse_key_from: z.string().uuid().optional(), // v3：免费模型发现——服务端复制该行密文（spec §4.3）
   capability: z.enum(['text', 'vision']),
   cost_tier: z.enum(['free', 'paid']),
   enabled: z.boolean().optional().default(true),
   priority: z.number().int().optional(),
   scope: z.enum(['personal', 'shared']).optional().default('personal'), // v2：shared 需邮箱白名单
+}).superRefine((d, ctx) => {
+  if (!d.api_key && !d.reuse_key_from) ctx.addIssue({ code: 'custom', message: 'api_key 与 reuse_key_from 需二选一' });
+  if (d.api_key && d.reuse_key_from) ctx.addIssue({ code: 'custom', message: 'api_key 与 reuse_key_from 只能提供其一' });
 });
 
 export const SetDefaultSchema = z.object({
