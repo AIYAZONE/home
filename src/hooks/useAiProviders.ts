@@ -18,7 +18,7 @@ export function useAiProviders() {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['ai-providers', userId] });
   // 行集变化会使发现区「可复用密钥」比对与已启用状态过期（spec §5.2）；仅 create/remove 挂，
-  // 读类 mutation（test/setDefault…）不动行集，避免无谓重拉 4.7MB 目录
+  // 其余 mutation（update/test/setDefault/reorder）不增删行，避免无谓重拉 4.7MB 目录
   const invalidateWithDiscover = () => {
     invalidate();
     qc.invalidateQueries({ queryKey: ['ai-providers-discover', userId] });
